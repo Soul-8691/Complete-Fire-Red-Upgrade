@@ -1,3 +1,4 @@
 #include "src/config.h"
 
 ##EmitPrintString 800E2D4 2
+Task_RegionMap_CFRU 80C04E4 1
