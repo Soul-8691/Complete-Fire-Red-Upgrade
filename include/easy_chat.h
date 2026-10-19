@@ -1,41 +1,77 @@
-#ifndef GUARD_EASYCHAT_H
-#define GUARD_EASYCHAT_H
+#ifndef GUARD_EASY_CHAT_H
+#define GUARD_EASY_CHAT_H
 
 #include "global.h"
+#include "constants/easy_chat.h"
 
-// Taken from Pokeruby, check if it's correct
-enum
+#define NUM_ALPHABET_ROWS    4
+#define NUM_ALPHABET_COLUMNS 7
+
+struct EasyChatWordInfo
 {
-    EC_GROUP_POKEMON,
-    EC_GROUP_TRAINER,
-    EC_GROUP_STATUS,
-    EC_GROUP_BATTLE,
-    EC_GROUP_GREETINGS,
-    EC_GROUP_PEOPLE,
-    EC_GROUP_VOICES,
-    EC_GROUP_SPEECH,
-    EC_GROUP_ENDINGS,
-    EC_GROUP_FEELINGS,
-    EC_GROUP_CONDITIONS,
-    EC_GROUP_ACTIONS,
-    EC_GROUP_LIFESTYLE,
-    EC_GROUP_HOBBIES,
-    EC_GROUP_TIME,
-    EC_GROUP_MISC,
-    EC_GROUP_ADJECTIVES,
-    EC_GROUP_EVENTS,
-    EC_GROUP_MOVE_1,
-    EC_GROUP_MOVE_2,
-    EC_GROUP_TRENDY_SAYING,
-    EC_GROUP_POKEMON_2,
+    const u8 *text;
+    int alphabeticalOrder;
+    int enabled;
 };
 
-void InitEasyChatPhrases(void);
-void easy_chat_input_maybe(void);
-void CopyEasyChatWord(u8 *dest, u16 word);
-bool32 sub_811F8D8(u16 word);
-void InitializeEasyChatWordArray(u16 *words, u16 length);
-void ConvertEasyChatWordsToString(u8 *dest, const u16 *src, u16 length1, u16 length2);
-bool8 ECWord_CheckIfOutsideOfValidRange(u16 word);
+typedef union
+{
+    const u16 *valueList;
+    const struct EasyChatWordInfo *words;
+} EasyChatGroupWordData;
 
-#endif // GUARD_EASYCHAT_H
+struct EasyChatGroup
+{
+    EasyChatGroupWordData wordData;
+    u16 numWords;
+    u16 numEnabledWords;
+};
+
+struct EasyChatWordsByLetter
+{
+    const u16 *words;
+    int numWords;
+};
+
+u8 *CopyEasyChatWord(u8 *dest, u16 word);
+u8 *ConvertEasyChatWordsToString(u8 *dest, const u16 *src, u16 columns, u16 rows);
+bool8 EC_DoesEasyChatStringFitOnLine(const u16 *easyChatWords, u8 columns, u8 rows, u16 maxLength);
+void InitQuestionnaireWords(void);
+void InitEasyChatPhrases(void);
+void EnableRareWord(u8);
+bool8 InitEasyChatSelection(void);
+void DestroyEasyChatSelectionData(void);
+u8 GetSelectedGroupByIndex(u8);
+void GetUnlockedECWords(bool32 isAlphabetical, u16 groupId);
+u16 GetDisplayedWordByIndex(u16 index);
+u16 GetNumDisplayedWords(void);
+const u8 *GetEasyChatWordGroupName(u8);
+u8 *CopyEasyChatWordPadded(u8 *, u16, u16);
+void DoEasyChatScreen(u8 type, u16 *words, MainCallback callback);
+u8 GetNumDisplayableGroups(void);
+bool8 InitEasyChatGraphicsWork(void);
+bool8 LoadEasyChatGraphics(void);
+void DestroyEasyChatGraphicsResources(void);
+void EasyChatInterfaceCommand_Setup(u16 id);
+bool8 EasyChatInterfaceCommand_Run(void);
+u8 GetEasyChatScreenFrameId(void);
+const u8 *GetTitleText(void);
+u16 *GetEasyChatWordBuffer(void);
+u8 GetNumRows(void);
+u8 GetNumColumns(void);
+u8 GetMainCursorColumn(void);
+u8 GetMainCursorRow(void);
+void GetEasyChatInstructionsText(const u8 **str1, const u8 **str2);
+void GetEasyChatConfirmText(const u8 **str1, const u8 **str2);
+void GetEasyChatConfirmCancelText(const u8 **str1, const u8 **str2);
+void GetEasyChatConfirmDeletionText(const u8 **str1, const u8 **str2);
+void GetECSelectGroupCursorCoords(u8 *Xp, u8 *Yp);
+bool8 IsEasyChatAlphaMode(void);
+u8 GetECSelectGroupRowsAbove(void);
+void GetECSelectWordCursorCoords(s8 *arg0, s8 *arg1);
+u8 GetECSelectWordRowsAbove(void);
+u8 GetECSelectWordNumRows(void);
+bool32 ShouldDrawECUpArrow(void);
+bool32 ShouldDrawECDownArrow(void);
+
+#endif // GUARD_EASY_CHAT_H

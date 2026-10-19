@@ -1,26 +1,27 @@
-#pragma once
-
-#define VAR_0x3F20                 0x3F20
+#ifndef GUARD_CONSTANTS_VARS_H
+#define GUARD_CONSTANTS_VARS_H
 
 #define VARS_START 0x4000
 
-// Temporary variables. Reset on map load.
-#define VAR_TEMP_0                          0x4000
-#define VAR_TEMP_1                          0x4001
-#define VAR_TEMP_2                          0x4002
-#define VAR_TEMP_3                          0x4003
-#define VAR_TEMP_4                          0x4004
-#define VAR_TEMP_5                          0x4005
-#define VAR_TEMP_6                          0x4006
-#define VAR_TEMP_7                          0x4007
-#define VAR_TEMP_8                          0x4008
-#define VAR_TEMP_9                          0x4009
-#define VAR_TEMP_A                          0x400A
-#define VAR_TEMP_B                          0x400B
-#define VAR_TEMP_C                          0x400C
-#define VAR_TEMP_D                          0x400D
-#define VAR_TEMP_E                          0x400E
-#define VAR_TEMP_F                          0x400F
+// Temporary variables. Temp vars are cleared every time a map is loaded.
+#define TEMP_VARS_START            0x4000
+#define VAR_TEMP_0                 (TEMP_VARS_START + 0x0)
+#define VAR_TEMP_1                 (TEMP_VARS_START + 0x1)
+#define VAR_TEMP_2                 (TEMP_VARS_START + 0x2)
+#define VAR_TEMP_3                 (TEMP_VARS_START + 0x3)
+#define VAR_TEMP_4                 (TEMP_VARS_START + 0x4)
+#define VAR_TEMP_5                 (TEMP_VARS_START + 0x5)
+#define VAR_TEMP_6                 (TEMP_VARS_START + 0x6)
+#define VAR_TEMP_7                 (TEMP_VARS_START + 0x7)
+#define VAR_TEMP_8                 (TEMP_VARS_START + 0x8)
+#define VAR_TEMP_9                 (TEMP_VARS_START + 0x9)
+#define VAR_TEMP_A                 (TEMP_VARS_START + 0xA)
+#define VAR_TEMP_B                 (TEMP_VARS_START + 0xB)
+#define VAR_TEMP_C                 (TEMP_VARS_START + 0xC)
+#define VAR_TEMP_D                 (TEMP_VARS_START + 0xD)
+#define VAR_TEMP_E                 (TEMP_VARS_START + 0xE)
+#define VAR_TEMP_F                 (TEMP_VARS_START + 0xF)
+#define TEMP_VARS_END              VAR_TEMP_F
 
 // Object event graphics IDs which can be changed by
 // script commands.
@@ -48,10 +49,15 @@
 // Counts up every step. Wraps around at 128.
 // When wraparound occurs, the friendship of
 // every party poke gets a slight boost.
-#define VAR_FRIENDSHIP_STEP_COUNT           0x4021
+#define VAR_HAPPINESS_STEP_COUNTER          0x4021
 
-// Maybe unused?
-#define VAR_0x4022                          0x4022
+// Counts up every step while a party Pokemon is
+// poisoned. Wraps around at 5. When wraparound
+// occurs, every party Pokemon with the PSN status
+// takes 1 point of damage.
+// This is a deviation from the typical rate in
+// the series, which is 1 damage every 4 steps.
+#define VAR_POISON_STEP_COUNTER             0x4022
 
 // Step counter. Caps at 1500. If you enter a map with
 // renewable hidden items and this counter is capped,
@@ -78,19 +84,19 @@
 // Bits 12-15 are the same for the player's party.
 // Used by Quest Log.
 #define VAR_QUEST_LOG_MON_COUNTS           0x4027
-#define VAR_MENEWS_JISAN_STEP_COUNTER      0x4028
+#define VAR_WONDER_NEWS_STEP_COUNTER       0x4028
 #define VAR_0x4029                         0x4029
-#define VAR_HAPPINESS_STEP_COUNTER         0x402A
-#define VAR_POISON_STEP_COUNTER            0x402B
-#define VAR_RESET_RTC_ENABLE               0x402C
+#define VAR_0x402A                         0x402A
+#define VAR_0x402B                         0x402B
+#define VAR_0x402C                         0x402C
 #define VAR_0x402D                         0x402D
 #define VAR_0x402E                         0x402E
 
 #define VAR_0x402F                         0x402F
 
 #define VAR_ICE_STEP_COUNT                 0x4030
-#define VAR_STARTER_MON                    0x4031
-#define VAR_0x4032                         0x4032
+#define VAR_STARTER_MON                    0x4031 // 0: Bulbasaur, 1: Squirtle, 2: Charmander
+#define VAR_RESET_RTC_ENABLE               0x4032
 #define VAR_ENIGMA_BERRY_AVAILABLE         0x4033
 
 #define VAR_0x4034                         0x4034
@@ -101,7 +107,7 @@
 #define VAR_FANCLUB_LOSE_FAN_TIMER         0x4039
 #define VAR_ELEVATOR_FLOOR                 0x403A
 #define VAR_RESORT_GORGEOUS_REWARD         0x403B
-#define VAR_0x403C                         0x403C
+#define VAR_0x403C                         0x403C // Set to 0x0302, never read
 #define VAR_HERACROSS_SIZE_RECORD          0x403D
 #define VAR_DEOXYS_INTERACTION_NUM         0x403E
 #define VAR_0x403F                         0x403F
@@ -118,8 +124,8 @@
 #define VAR_EGG_BRAG_STATE                 0x404A
 #define VAR_LINK_WIN_BRAG_STATE            0x404B
 #define VAR_POKELOT_RND2                   0x404C
-#define VAR_0x404D                         0x404D
-#define VAR_0x404E                         0x404E
+#define VAR_QL_ENTRANCE                    0x404D
+#define VAR_NATIONAL_DEX                   0x404E
 #define VAR_LOTAD_SIZE_RECORD              0x404F
 
 // Map Scene
@@ -131,7 +137,7 @@
 #define VAR_MAP_SCENE_PALLET_TOWN_PROFESSOR_OAKS_LAB                           0x4055
 #define VAR_MAP_SCENE_PALLET_TOWN_PLAYERS_HOUSE_2F                             0x4056
 #define VAR_MAP_SCENE_VIRIDIAN_CITY_MART                                       0x4057
-#define VAR_MAP_SCENE_PALLET_TOWN_GARYS_HOUSE                                  0x4058
+#define VAR_MAP_SCENE_PALLET_TOWN_RIVALS_HOUSE                                 0x4058
 #define VAR_MAP_SCENE_POKEMON_TOWER_6F                                         0x4059
 #define VAR_MAP_SCENE_VIRIDIAN_CITY_GYM_DOOR                                   0x405A
 #define VAR_MAP_SCENE_S_S_ANNE_2F_CORRIDOR                                     0x405B
@@ -215,11 +221,10 @@
 #define VAR_0x40A7                 0x40A7
 #define VAR_0x40A8                 0x40A8
 #define VAR_0x40A9                 0x40A9
-#define VAR_0x40AA                 0x40AA
-#define VAR_0x40AB                 0x40AB
-#define VAR_0x40AC                 0x40AC
-#define VAR_0x40AD                 0x40AD
-#define VAR_0x40AE                 0x40AE
+
+#define VAR_QLBAK_TRAINER_REMATCHES 0x40AA // array of 4
+#define VAR_QLBAK_MAP_LAYOUT        0x40AE
+
 #define VAR_0x40AF                 0x40AF
 #define VAR_0x40B0                 0x40B0
 #define VAR_0x40B1                 0x40B1
@@ -227,13 +232,13 @@
 #define VAR_0x40B3                 0x40B3
 #define VAR_PORTHOLE               0x40B4
 #define VAR_EVENT_PICHU_SLOT       0x40B5
-#define VAR_0x40B6                 0x40B6
-#define VAR_0x40B7                 0x40B7
-#define VAR_0x40B8                 0x40B8
-#define VAR_0x40B9                 0x40B9
-#define VAR_0x40BA                 0x40BA
-#define VAR_0x40BB                 0x40BB
-#define VAR_0x40BC                 0x40BC
+#define VAR_MYSTERY_GIFT_1         0x40B6
+#define VAR_MYSTERY_GIFT_2         0x40B7
+#define VAR_MYSTERY_GIFT_3         0x40B8
+#define VAR_MYSTERY_GIFT_4         0x40B9
+#define VAR_MYSTERY_GIFT_5         0x40BA
+#define VAR_MYSTERY_GIFT_6         0x40BB
+#define VAR_MYSTERY_GIFT_7         0x40BC
 #define VAR_0x40BD                 0x40BD
 #define VAR_0x40BE                 0x40BE
 #define VAR_0x40BF                 0x40BF
@@ -303,6 +308,7 @@
 #define VAR_0x40FF                 0x40FF
 
 #define VARS_END                   0x40FF
+#define VARS_COUNT                 (VARS_END - VARS_START + 1)
 
 #define SPECIAL_VARS_START         0x8000
 
@@ -322,10 +328,19 @@
 #define VAR_RESULT                 0x800D
 #define VAR_ITEM_ID                0x800E
 #define VAR_LAST_TALKED            0x800F
-#define VAR_CONTEST_RANK           0x8010
-#define VAR_CONTEST_CATEGORY       0x8011
-#define VAR_MON_BOX_ID             0x8012
-#define VAR_MON_BOX_POS            0x8013
-#define VAR_TEXT_COLOR             0x8014
+#define VAR_MON_BOX_ID             0x8010
+#define VAR_MON_BOX_POS            0x8011
+#define VAR_TEXT_COLOR             0x8012
+#define VAR_PREV_TEXT_COLOR        0x8013
+#define VAR_0x8014                 0x8014 // Unknown/unused
 
 #define SPECIAL_VARS_END           0x8014
+
+// Text color ids for VAR_TEXT_COLOR / VAR_PREV_TEXT_COLOR
+#define NPC_TEXT_COLOR_MALE      0 // Blue, for male NPCs
+#define NPC_TEXT_COLOR_FEMALE    1 // Red, for female NPCs
+#define NPC_TEXT_COLOR_MON       2 // Black, for Pokémon
+#define NPC_TEXT_COLOR_NEUTRAL   3 // Black, for inanimate objects and messages from the game
+#define NPC_TEXT_COLOR_DEFAULT 255 // If an NPC is selected, use the color specified by GetColorFromTextColorTable, otherwise use Neutral.
+
+#endif // GUARD_CONSTANTS_VARS_H

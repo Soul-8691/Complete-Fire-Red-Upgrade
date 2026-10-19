@@ -3,8 +3,7 @@
 
 #include "global.h"
 
-enum
-{
+enum {
     AI_ITEM_FULL_RESTORE = 1,
     AI_ITEM_HEAL_HP,
     AI_ITEM_CURE_CONDITION,
@@ -13,7 +12,16 @@ enum
     AI_ITEM_NOT_RECOGNIZABLE
 };
 
-void __attribute__((long_call)) AI_TrySwitchOrUseItem(void);
-u8 __attribute__((long_call)) GetMostSuitableMonToSwitchInto(void);
+enum {
+    AI_HEAL_CONFUSION,
+    AI_HEAL_PARALYSIS,
+    AI_HEAL_FREEZE,
+    AI_HEAL_BURN,
+    AI_HEAL_POISON,
+    AI_HEAL_SLEEP,
+};
+
+void AI_TrySwitchOrUseItem(void);
+u8 GetMostSuitableMonToSwitchInto(void);
 
 #endif // GUARD_BATTLE_AI_SWITCH_ITEMS_H

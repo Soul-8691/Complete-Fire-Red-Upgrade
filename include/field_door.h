@@ -1,26 +1,13 @@
-#pragma once
+#ifndef GUARD_FIELDDOOR_H
+#define GUARD_FIELDDOOR_H
 
 #include "global.h"
 
-struct DoorGraphics
-{
-    u16 metatileNum;
-    u8 sound;
-    u8 size;
-    const void *tiles;
-    const void *palette;
-};
+void FieldSetDoorOpened(int x, int y);
+void FieldSetDoorClosed(int x, int y);
+s8 FieldAnimateDoorClose(int x, int y);
+s8 FieldAnimateDoorOpen(int x, int y);
+bool8 FieldIsDoorAnimationRunning(void);
+u16 GetDoorSoundEffect(int x, int y);
 
-struct DoorAnimFrame
-{
-    u8 time;
-    u16 offset;
-};
-
-void __attribute__((long_call)) FieldSetDoorOpened(u32, u32);
-void __attribute__((long_call)) FieldSetDoorClosed(u32, u32);
-s8 __attribute__((long_call)) FieldAnimateDoorClose(u32, u32);
-s8 __attribute__((long_call)) FieldAnimateDoorOpen(u32, u32);
-bool8 __attribute__((long_call)) FieldIsDoorAnimationRunning(void);
-u32 __attribute__((long_call)) GetDoorSoundEffect(u32 x, u32 y);
-
+#endif

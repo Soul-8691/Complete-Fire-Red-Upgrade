@@ -2,10 +2,10 @@
 #define GUARD_BATTLE_MESSAGE_H
 
 #include "global.h"
+#include "constants/battle_string_ids.h"
 
-#define TEXT_BUFF_ARRAY_COUNT   16
+// for 0xFD
 
-//For 0xFD
 #define B_TXT_BUFF1 0x0
 #define B_TXT_BUFF2 0x1
 #define B_TXT_COPY_VAR_1 0x2
@@ -52,22 +52,9 @@
 #define B_TXT_DEF_PREFIX2 0x2B
 #define B_TXT_ATK_PREFIX3 0x2C
 #define B_TXT_DEF_PREFIX3 0x2D
-#define B_TXT_TRAINER2_CLASS 0x2E
-#define B_TXT_TRAINER2_NAME 0x2F
-#define B_TXT_TRAINER2_LOSE_TEXT 0x30
-#define B_TXT_TRAINER2_WIN_TEXT 0x31
-#define B_TXT_PARTNER_CLASS 0x32
-#define B_TXT_PARTNER_NAME 0x33
-#define B_TXT_BUFF3 0x34
-#define B_TXT_AFFECTS_TARGET_SIDE 0x35
-#define B_TXT_AFFECTS_ATTACKER_SIDE 0x36
-#define B_TXT_AFFECTS_TARGET_SIDE_CAPS 0x37
-#define B_TXT_AFFECTS_ATTACKER_SIDE_CAPS 0x38
-#define B_TXT_SCRIPTING_TRAINER 0x39
-#define B_TXT_CAPTURED_MON_NAME 0x3A
-#define B_TXT_DEF_NAME 0x3B
-#define B_TXT_DEF_PARTNER_NAME 0x3C
-#define B_TXT_DEF_PREFIX5 0x3D
+#define B_TXT_TRAINER2_LOSE_TEXT 0x2E
+#define B_TXT_TRAINER2_WIN_TEXT 0x2F
+#define B_TXT_BUFF3 0x30
 
 // for B_TXT_BUFF1, B_TXT_BUFF2 and B_TXT_BUFF3
 
@@ -88,175 +75,185 @@
 
 #define PREPARE_FLAVOR_BUFFER(textVar, flavorId)                            \
 {                                                                           \
-	textVar[0] = B_BUFF_PLACEHOLDER_BEGIN;                                  \
-	textVar[1] = B_BUFF_NEGATIVE_FLAVOR;                                    \
-	textVar[2] = flavorId;                                                  \
-	textVar[3] = B_BUFF_EOS;                                                \
+    textVar[0] = B_BUFF_PLACEHOLDER_BEGIN;                                  \
+    textVar[1] = B_BUFF_NEGATIVE_FLAVOR;                                    \
+    textVar[2] = flavorId;                                                  \
+    textVar[3] = B_BUFF_EOS;                                                \
 }
 
 #define PREPARE_STAT_BUFFER(textVar, statId)                                \
 {                                                                           \
-	textVar[0] = B_BUFF_PLACEHOLDER_BEGIN;                                  \
-	textVar[1] = B_BUFF_STAT;                                               \
-	textVar[2] = statId;                                                    \
-	textVar[3] = B_BUFF_EOS;                                                \
-}
-
-#define PREPARE_STAT_ROSE(textvar);											\
-{																			\
-	textvar[0] = B_BUFF_PLACEHOLDER_BEGIN;									\
-	textvar[1] = B_BUFF_STRING;												\
-	textvar[2] = STRINGID_STATROSE;											\
-	textvar[3] = STRINGID_STATROSE >> 8;									\
-	textvar[4] = B_BUFF_EOS;												\
+    textVar[0] = B_BUFF_PLACEHOLDER_BEGIN;                                  \
+    textVar[1] = B_BUFF_STAT;                                               \
+    textVar[2] = statId;                                                    \
+    textVar[3] = B_BUFF_EOS;                                                \
 }
 
 #define PREPARE_ABILITY_BUFFER(textVar, abilityId)                          \
 {                                                                           \
-	textVar[0] = B_BUFF_PLACEHOLDER_BEGIN;                                  \
-	textVar[1] = B_BUFF_ABILITY;                                            \
-	textVar[2] = abilityId;                                                 \
-	textVar[3] = B_BUFF_EOS;                                                \
+    textVar[0] = B_BUFF_PLACEHOLDER_BEGIN;                                  \
+    textVar[1] = B_BUFF_ABILITY;                                            \
+    textVar[2] = abilityId;                                                 \
+    textVar[3] = B_BUFF_EOS;                                                \
 }
 
 #define PREPARE_TYPE_BUFFER(textVar, typeId)                                \
 {                                                                           \
-	textVar[0] = B_BUFF_PLACEHOLDER_BEGIN;                                  \
-	textVar[1] = B_BUFF_TYPE;                                               \
-	textVar[2] = typeId;                                                    \
-	textVar[3] = B_BUFF_EOS;                                                \
+    textVar[0] = B_BUFF_PLACEHOLDER_BEGIN;                                  \
+    textVar[1] = B_BUFF_TYPE;                                               \
+    textVar[2] = typeId;                                                    \
+    textVar[3] = B_BUFF_EOS;                                                \
 }
 
 #define PREPARE_BYTE_NUMBER_BUFFER(textVar, maxDigits, number)  \
 {                                                               \
-	textVar[0] = B_BUFF_PLACEHOLDER_BEGIN;                      \
-	textVar[1] = B_BUFF_NUMBER;                                 \
-	textVar[2] = 1;                                             \
-	textVar[3] = maxDigits;                                     \
-	textVar[4] = (number);                                      \
-	textVar[5] = B_BUFF_EOS;                                    \
+    textVar[0] = B_BUFF_PLACEHOLDER_BEGIN;                      \
+    textVar[1] = B_BUFF_NUMBER;                                 \
+    textVar[2] = 1;                                             \
+    textVar[3] = maxDigits;                                     \
+    textVar[4] = (number);                                      \
+    textVar[5] = B_BUFF_EOS;                                    \
 }
 
 #define PREPARE_HWORD_NUMBER_BUFFER(textVar, maxDigits, number)             \
 {                                                                           \
-	textVar[0] = B_BUFF_PLACEHOLDER_BEGIN;                                  \
-	textVar[1] = B_BUFF_NUMBER;                                             \
-	textVar[2] = 2;                                                         \
-	textVar[3] = maxDigits;                                                 \
-	textVar[4] = (number);                                                  \
-	textVar[5] = (number & 0x0000FF00) >> 8;                                \
-	textVar[6] = B_BUFF_EOS;                                                \
+    textVar[0] = B_BUFF_PLACEHOLDER_BEGIN;                                  \
+    textVar[1] = B_BUFF_NUMBER;                                             \
+    textVar[2] = 2;                                                         \
+    textVar[3] = maxDigits;                                                 \
+    textVar[4] = (number);                                                  \
+    textVar[5] = (number & 0x0000FF00) >> 8;                                \
+    textVar[6] = B_BUFF_EOS;                                                \
 }
 
 #define PREPARE_WORD_NUMBER_BUFFER(textVar, maxDigits, number)  \
 {                                                               \
-	textVar[0] = B_BUFF_PLACEHOLDER_BEGIN;                      \
-	textVar[1] = B_BUFF_NUMBER;                                 \
-	textVar[2] = 4;                                             \
-	textVar[3] = maxDigits;                                     \
-	textVar[4] = (number);                                      \
-	textVar[5] = (number & 0x0000FF00) >> 8;                    \
-	textVar[6] = (number & 0x00FF0000) >> 16;                   \
-	textVar[7] = (number & 0xFF000000) >> 24;                   \
-	textVar[8] = B_BUFF_EOS;                                    \
+    textVar[0] = B_BUFF_PLACEHOLDER_BEGIN;                      \
+    textVar[1] = B_BUFF_NUMBER;                                 \
+    textVar[2] = 4;                                             \
+    textVar[3] = maxDigits;                                     \
+    textVar[4] = (number);                                      \
+    textVar[5] = (number & 0x0000FF00) >> 8;                    \
+    textVar[6] = (number & 0x00FF0000) >> 16;                   \
+    textVar[7] = (number & 0xFF000000) >> 24;                   \
+    textVar[8] = B_BUFF_EOS;                                    \
 }
 
 #define PREPARE_STRING_BUFFER(textVar, stringId)                \
 {                                                               \
-	textVar[0] = B_BUFF_PLACEHOLDER_BEGIN;                      \
-	textVar[1] = B_BUFF_STRING;                                 \
-	textVar[2] = stringId;                                      \
-	textVar[3] = (stringId & 0xFF00) >> 8;                      \
-	textVar[4] = B_BUFF_EOS;                                    \
+    textVar[0] = B_BUFF_PLACEHOLDER_BEGIN;                      \
+    textVar[1] = B_BUFF_STRING;                                 \
+    textVar[2] = stringId;                                      \
+    textVar[3] = (stringId & 0xFF00) >> 8;                      \
+    textVar[4] = B_BUFF_EOS;                                    \
 }
 
 #define PREPARE_MOVE_BUFFER(textVar, move)                      \
 {                                                               \
-	textVar[0] = B_BUFF_PLACEHOLDER_BEGIN;                      \
-	textVar[1] = B_BUFF_MOVE;                                   \
-	textVar[2] = move;                                          \
-	textVar[3] = (move & 0xFF00) >> 8;                          \
-	textVar[4] = B_BUFF_EOS;                                    \
+    textVar[0] = B_BUFF_PLACEHOLDER_BEGIN;                      \
+    textVar[1] = B_BUFF_MOVE;                                   \
+    textVar[2] = move;                                          \
+    textVar[3] = (move & 0xFF00) >> 8;                          \
+    textVar[4] = B_BUFF_EOS;                                    \
 }
 
 #define PREPARE_ITEM_BUFFER(textVar, item)                      \
 {                                                               \
-	textVar[0] = B_BUFF_PLACEHOLDER_BEGIN;                      \
-	textVar[1] = B_BUFF_ITEM;                                   \
-	textVar[2] = item;                                          \
-	textVar[3] = (item & 0xFF00) >> 8;                          \
-	textVar[4] = B_BUFF_EOS;                                    \
+    textVar[0] = B_BUFF_PLACEHOLDER_BEGIN;                      \
+    textVar[1] = B_BUFF_ITEM;                                   \
+    textVar[2] = item;                                          \
+    textVar[3] = (item & 0xFF00) >> 8;                          \
+    textVar[4] = B_BUFF_EOS;                                    \
 }
 
 #define PREPARE_SPECIES_BUFFER(textVar, species)                \
 {                                                               \
-	textVar[0] = B_BUFF_PLACEHOLDER_BEGIN;                      \
-	textVar[1] = B_BUFF_SPECIES;                                \
-	textVar[2] = species;                                       \
-	textVar[3] = (species & 0xFF00) >> 8;                       \
-	textVar[4] = B_BUFF_EOS;                                    \
+    textVar[0] = B_BUFF_PLACEHOLDER_BEGIN;                      \
+    textVar[1] = B_BUFF_SPECIES;                                \
+    textVar[2] = species;                                       \
+    textVar[3] = (species & 0xFF00) >> 8;                       \
+    textVar[4] = B_BUFF_EOS;                                    \
 }
 
 #define PREPARE_MON_NICK_WITH_PREFIX_BUFFER(textVar, bank, partyId)         \
 {                                                                           \
-	textVar[0] = B_BUFF_PLACEHOLDER_BEGIN;                                  \
-	textVar[1] = B_BUFF_MON_NICK_WITH_PREFIX;                               \
-	textVar[2] = bank;                                                      \
-	textVar[3] = partyId;                                                   \
-	textVar[4] = B_BUFF_EOS;                                                \
+    textVar[0] = B_BUFF_PLACEHOLDER_BEGIN;                                  \
+    textVar[1] = B_BUFF_MON_NICK_WITH_PREFIX;                               \
+    textVar[2] = bank;                                                      \
+    textVar[3] = partyId;                                                   \
+    textVar[4] = B_BUFF_EOS;                                                \
 }
 
 #define PREPARE_MON_NICK_BUFFER(textVar, bank, partyId)         \
 {                                                               \
-	textVar[0] = B_BUFF_PLACEHOLDER_BEGIN;                      \
-	textVar[1] = B_BUFF_MON_NICK;                               \
-	textVar[2] = bank;                                          \
-	textVar[3] = partyId;                                       \
-	textVar[4] = B_BUFF_EOS;                                    \
+    textVar[0] = B_BUFF_PLACEHOLDER_BEGIN;                      \
+    textVar[1] = B_BUFF_MON_NICK;                               \
+    textVar[2] = bank;                                          \
+    textVar[3] = partyId;                                       \
+    textVar[4] = B_BUFF_EOS;                                    \
 }
-
-#define TEXT_BUFF_ARRAY_COUNT   16
-#define MAX_BATTLE_STRING_LOADER_LENGTH 0x96
 
 struct BattleMsgData
 {
-	u16 currentMove;
-	u16 originallyUsedMove;
-	u16 lastItem;
-	u8 lastAbility;
-	u8 scrActive;
-	u8 unk1605E;
-	u8 hpScale;
-	u8 stringBank;
-	u8 moveType;
-	bool8 zMoveActive;
-	bool8 dynamaxActive;
-	u8 abilities[MAX_BATTLERS_COUNT];
-	u16 species[MAX_BATTLERS_COUNT];
-	u8 textBuffs[3][TEXT_BUFF_ARRAY_COUNT];
-	u8 battleStringLoader[MAX_BATTLE_STRING_LOADER_LENGTH];
+    u16 currentMove;
+    u16 originallyUsedMove;
+    u16 lastItem;
+    u8 lastAbility;
+    u8 scrActive;
+    u8 bakScriptPartyIdx;
+    u8 hpScale;
+    u8 itemEffectBattler;
+    u8 moveType;
+    u8 abilities[4];
+    u8 textBuffs[3][0x10];
 };
 
-void __attribute__((long_call)) BufferStringBattle(u16 stringID);
-u32 __attribute__((long_call)) BattleStringExpandPlaceholdersToDisplayedString(const u8* src);
-u32 __attribute__((long_call)) BattleStringExpandPlaceholders(const u8* src, u8* dst);
-void __attribute__((long_call)) BattleHandleAddTextPrinter(const u8* text, u8 arg1);
-void __attribute__((long_call)) SetPpNumbersPaletteInMoveSelection(void);
-u8 __attribute__((long_call)) GetCurrentPpToMaxPpState(u8 currentPp, u8 maxPp);
+void BufferStringBattle(u16 stringID);
+u32 BattleStringExpandPlaceholdersToDisplayedString(const u8 *src);
+u32 BattleStringExpandPlaceholders(const u8 *src, u8 *dst);
+void BattleHandleAddTextPrinter(const u8 *text, u8 arg1);
+void SetPpNumbersPaletteInMoveSelection(void);
+u8 GetCurrentPpToMaxPpState(u8 currentPp, u8 maxPp);
+void BattlePutTextOnWindow(const u8 *text, u8 windowId_flags);
+bool8 BattleStringShouldBeColored(u16);
 
+extern struct BattleMsgData *gBattleMsgDataPtr;
+
+#define TEXT_BUFF_ARRAY_COUNT   16
 
 extern u8 gDisplayedStringBattle[300];
 extern u8 gBattleTextBuff1[TEXT_BUFF_ARRAY_COUNT];
 extern u8 gBattleTextBuff2[TEXT_BUFF_ARRAY_COUNT];
 extern u8 gBattleTextBuff3[TEXT_BUFF_ARRAY_COUNT];
 
-extern const u8* const gBattleStringsTable[];
-#define gStatNamesTable ((const u8**) 0x83FD5D0) //extern const u8* const gStatNamesTable[];
-extern const u8* const gPokeblockWasTooXStringTable[];
-extern const u8* const gRefereeStringsTable[];
-extern const u8* const gStatNamesTable2[];
+extern const u8 *const gBattleStringsTable[];
+extern const u8 *const gStatNamesTable[];
+extern const u8 *const gPokeblockWasTooXStringTable[];
+extern const u8 *const gRefereeStringsTable[];
+extern const u8 *const gStatNamesTable2[];
 
 extern const u16 gMissStringIds[];
 extern const u16 gTrappingMoves[];
+
+extern const u8 gText_Sleep[];
+extern const u8 gText_Poison[];
+extern const u8 gText_Burn[];
+extern const u8 gText_Paralysis[];
+extern const u8 gText_Ice[];
+extern const u8 gText_Confusion[];
+extern const u8 gText_Love[];
+
+extern const u8 gText_BattleTowerBan_Space[];
+extern const u8 gText_BattleTowerBan_Newline1[];
+extern const u8 gText_BattleTowerBan_Newline2[];
+extern const u8 gText_BattleTowerBan_Is1[];
+extern const u8 gText_BattleTowerBan_Is2[];
+
+extern const u8 gText_SafariBalls[];
+extern const u8 gText_HighlightRed_Left[];
+
+extern const u8 gText_Win[];
+extern const u8 gText_Loss[];
+extern const u8 gText_Draw[];
 
 #endif // GUARD_BATTLE_MESSAGE_H

@@ -1,4 +1,5 @@
-#pragma once
+#ifndef GUARD_MENU_HELPERS_H
+#define GUARD_MENU_HELPERS_H
 
 #include "global.h"
 #include "task.h"
@@ -13,18 +14,20 @@ struct YesNoFuncTable
     TaskFunc noFunc;
 };
 
-bool16 __attribute__((long_call)) RunTextPrinters_CheckActive(u8 textPrinterId);
-bool32 __attribute__((long_call)) MenuHelpers_CallLinkSomething(void);
-bool8 __attribute__((long_call)) sub_80BF748(void);
-bool8 __attribute__((long_call)) MenuHelpers_LinkSomething(void);
-void __attribute__((long_call)) SetVBlankHBlankCallbacksToNull(void);
-void __attribute__((long_call)) ResetAllBgsCoordinatesAndBgCntRegs(void);
-u8 __attribute__((long_call)) GetDialogBoxFontId(void);
-bool8 __attribute__((long_call)) AdjustQuantityAccordingToDPadInput(s16 *quantity_p, u16 qmax);
-void __attribute__((long_call)) DisplayMessageAndContinueTask(u8 taskId, u8 windowId, u16 tileNum, u8 paletteNum, u8 fontId, u8 textSpeed, const u8 *string, void *taskFunc);
-void __attribute__((long_call)) CreateYesNoMenuWithCallbacks(u8 taskId, const struct WindowTemplate *template, u8 fontId, u8 left, u8 top, u16 tileStart, u8 palette, const struct YesNoFuncTable *yesNo);
-u8 __attribute__((long_call)) GetLRKeysState(void);
-u8 __attribute__((long_call)) GetLRKeysPressedAndHeld(void);
-bool8 __attribute__((long_call)) itemid_link_can_give_berry(u16 itemId);
-bool8 __attribute__((long_call)) CanWriteMailHere(u16 itemId);
-void __attribute__((long_call)) ResetVramOamAndBgCntRegs(void);
+bool16 RunTextPrinters_CheckActive(u8 textPrinterId);
+bool8 IsActiveOverworldLinkBusy(void);
+bool8 MenuHelpers_ShouldWaitForLinkRecv(void);
+bool8 MenuHelpers_IsLinkActive(void);
+void SetVBlankHBlankCallbacksToNull(void);
+void ResetAllBgsCoordinatesAndBgCntRegs(void);
+u8 GetDialogBoxFontId(void);
+bool8 AdjustQuantityAccordingToDPadInput(s16 *quantity_p, u16 qmax);
+void DisplayMessageAndContinueTask(u8 taskId, u8 windowId, u16 tileNum, u8 paletteNum, u8 fontId, u8 textSpeed, const u8 *string, void *taskFunc);
+void CreateYesNoMenuWithCallbacks(u8 taskId, const struct WindowTemplate *template, u8 fontId, u8 left, u8 top, u16 tileStart, u8 palette, const struct YesNoFuncTable *yesNo);
+u8 GetLRKeysPressed(void);
+u8 GetLRKeysPressedAndHeld(void);
+bool8 IsHoldingItemAllowed(u16 itemId);
+bool8 IsWritingMailAllowed(u16 itemId);
+void ResetVramOamAndBgCntRegs(void);
+
+#endif //GUARD_MENU_HELPERS_H

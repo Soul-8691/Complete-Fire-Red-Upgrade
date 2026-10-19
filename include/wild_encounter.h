@@ -1,4 +1,5 @@
-#pragma once
+#ifndef GUARD_WILD_ENCOUNTER_H
+#define GUARD_WILD_ENCOUNTER_H
 
 #include "global.h"
 
@@ -6,6 +7,8 @@
 #define WATER_WILD_COUNT    5
 #define ROCK_WILD_COUNT     5
 #define FISH_WILD_COUNT     10
+
+#define NUM_ALTERING_CAVE_TABLES 9
 
 struct WildPokemon
 {
@@ -16,40 +19,35 @@ struct WildPokemon
 
 struct WildPokemonInfo
 {
-   u8 encounterRate;
-   const struct WildPokemon *wildPokemon;
+    u8 encounterRate;
+    const struct WildPokemon *wildPokemon;
 };
 
 struct WildPokemonHeader
 {
     u8 mapGroup;
     u8 mapNum;
-	u16 padding;
     const struct WildPokemonInfo *landMonsInfo;
     const struct WildPokemonInfo *waterMonsInfo;
     const struct WildPokemonInfo *rockSmashMonsInfo;
     const struct WildPokemonInfo *fishingMonsInfo;
 };
 
-#define gWildMonHeaders ((struct WildPokemonHeader*) *((u32*) 0x8082990))
+extern const struct WildPokemonHeader gWildMonHeaders[];
 
-struct SwarmData
-{
-	u8 mapName;
-	u16 species;
-};
+void DisableWildEncounters(bool8 disabled);
+bool8 StandardWildEncounter(u32 currMetatileAttrs, u16 previousMetaTileBehavior);
+bool8 SweetScentWildEncounter(void);
+bool8 DoesCurrentMapHaveFishingMons(void);
+void FishingWildEncounter(u8 rod);
+u16 GetLocalWildMon(bool8 *isWaterMon);
+u16 GetLocalWaterMon(void);
+bool8 UpdateRepelCounter(void);
+void DisableWildEncounters(bool8 state);
+u8 GetUnownLetterByPersonalityLoByte(u32 personality);
+bool8 SweetScentWildEncounter(void);
+void SeedWildEncounterRng(u16 randVal);
+void ResetEncounterRateModifiers(void);
+bool8 TryStandardWildEncounter(u32 currMetatileAttrs);
 
-u8 __attribute__((long_call)) ChooseWildMonIndex_Land(void);
-u8 __attribute__((long_call)) ChooseWildMonIndex_WaterRock(void);
-u8 __attribute__((long_call)) ChooseWildMonIndex_Fishing(u8 rod);
-bool8 __attribute__((long_call)) CanEncounterUnownInTanobyRuins(void);
-u32 __attribute__((long_call)) GenerateUnownPersonalityByLetter(u8 letter);
-//bool8 __attribute__((long_call)) DoWildEncounterRateDiceRoll(u16 encounterRate);
-bool8 __attribute__((long_call)) DoGlobalWildEncounterDiceRoll(void);
-bool8 __attribute__((long_call)) IsWildLevelAllowedByRepel(u8 level);
-void __attribute__((long_call)) ApplyFluteEncounterRateMod(u32 *encRate);
-void __attribute__((long_call)) ApplyCleanseTagEncounterRateMod(u32 *encRate);
-void __attribute__((long_call)) AddToWildEncounterRateBuff(u8 encounterRate);
-u8  __attribute__((long_call)) GetUnownLetterFromPersonality(u32 personality);
-bool8 __attribute__((long_call)) HandleWildEncounterCooldown(u32 currMetatileBehavior);
-u8 __attribute__((long_call)) GetFluteEncounterRateModType(void);
+#endif // GUARD_WILD_ENCOUNTER_H

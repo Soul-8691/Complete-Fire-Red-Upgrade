@@ -1,4 +1,7 @@
-#pragma once
+#ifndef GUARD_FIELD_CAMERA_H
+#define GUARD_FIELD_CAMERA_H
+
+#include "global.h"
 
 // Exported type declarations
 
@@ -13,26 +16,27 @@ struct CameraObject
 };
 
 // Exported RAM declarations
+
 extern struct CameraObject gFieldCamera;
 extern u16 gTotalCameraPixelOffsetX;
 extern u16 gTotalCameraPixelOffsetY;
-
-void __attribute__((long_call)) CurrentMapDrawMetatileAt(int x, int y);
-void __attribute__((long_call)) DrawWholeMapView(void);
-void __attribute__((long_call)) ResetFieldCamera(void);
+extern bool8 gBikeCameraAheadPanback;
 
 // Exported ROM declarations
-/*
-void sub_8089C08(s16 *a0, s16 *a1);
-void DrawDoorMetatileAt(int x, int y, u16 *arr);
-void move_tilemap_camera_to_upper_left_corner(void);
-void sub_8057A58(void);
-void ResetCameraUpdateInfo(void);
-u32 InitCameraUpdateCallback(u8 a);
-void CameraUpdate(void);
-void SetCameraPanningCallback(void (*a)(void));
-void SetCameraPanning(s16 a, s16 b);
-void InstallCameraPanAheadCallback(void);
+
+void DrawWholeMapView(void);
+void CurrentMapDrawMetatileAt(int x, int y);
+void FieldCameraGetPixelOffsetAtGround(s16 *x, s16 *y);
+void SetCameraPanningCallback(void (*cb)(void));
+void SetCameraPanning(s16 x, s16 y);
 void UpdateCameraPanning(void);
+void InstallCameraPanAheadCallback(void);
+void DrawDoorMetatileAt(int x, int y, const u16 *data);
+void move_tilemap_camera_to_upper_left_corner(void);
+void CameraUpdate(void);
 void FieldUpdateBgTilemapScroll(void);
-*/
+void ResetCameraUpdateInfo(void);
+u32 InitCameraUpdateCallback(u8 trackedSpriteId);
+void CameraUpdateNoObjectRefresh(void);
+
+#endif //GUARD_FIELD_CAMERA_H

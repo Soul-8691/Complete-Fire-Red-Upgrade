@@ -3,6 +3,8 @@
 
 #include "global.h"
 
+#define MAIL_WORDS_COUNT 9
+
 #define IS_ITEM_MAIL(itemId)((itemId == ITEM_ORANGE_MAIL            \
                               || itemId == ITEM_HARBOR_MAIL         \
                               || itemId == ITEM_GLITTER_MAIL        \
@@ -16,10 +18,10 @@
                               || itemId == ITEM_FAB_MAIL            \
                               || itemId == ITEM_RETRO_MAIL))
 
+#define FIRST_MAIL_IDX ITEM_ORANGE_MAIL
 
-bool8 MonHasMail(struct Pokemon *mon);
-void TakeMailFromMon(struct Pokemon *mon);
-u8 GiveMailToMon2(struct Pokemon *mon, struct MailStruct *mail);
-void ClearMailStruct(struct MailStruct *mail);
+#define ITEM_TO_MAIL(itemId) (itemId - FIRST_MAIL_IDX)
+
+void ReadMail(struct Mail * mail, void (*savedCallback)(void), bool8 messageExists);
 
 #endif // GUARD_MAIL_H

@@ -1,4 +1,5 @@
-#pragma once
+#ifndef GUARD_BATTLE_UTIL_H
+#define GUARD_BATTLE_UTIL_H
 
 #include "global.h"
 
@@ -7,42 +8,46 @@
 #define MOVE_LIMITATION_DISABLED                (1 << 2)
 #define MOVE_LIMITATION_TORMENTED               (1 << 3)
 #define MOVE_LIMITATION_TAUNT                   (1 << 4)
-#define MOVE_LIMITATION_IMPRISION               (1 << 5)
+#define MOVE_LIMITATION_IMPRISON                (1 << 5)
+#define MOVE_LIMITATIONS_ALL                    0xFF
 
-#define ABILITYEFFECT_ON_SWITCHIN               0x0
-#define ABILITYEFFECT_ENDTURN                   0x1
-#define ABILITYEFFECT_MOVES_BLOCK               0x2
-#define ABILITYEFFECT_ABSORBING                 0x3
-#define ABILITYEFFECT_CONTACT                   0x4
-#define ABILITYEFFECT_IMMUNITY                  0x5
-#define ABILITYEFFECT_FORECAST                  0x6
-#define ABILITYEFFECT_SYNCHRONIZE               0x7
-#define ABILITYEFFECT_ATK_SYNCHRONIZE           0x8
-#define ABILITYEFFECT_INTIMIDATE1               0x9
-#define ABILITYEFFECT_INTIMIDATE2               0xA
-#define ABILITYEFFECT_TRACE                     0xB
-#define ABILITYEFFECT_CHECK_OTHER_SIDE          0xC
-#define ABILITYEFFECT_CHECK_BANK_SIDE           0xD
-#define ABILITYEFFECT_FIELD_SPORT               0xE
-#define ABILITYEFFECT_CHECK_FIELD_EXCEPT_BANK   0xF
-#define ABILITYEFFECT_COUNT_OTHER_SIDE          0x10
-#define ABILITYEFFECT_COUNT_BANK_SIDE           0x11
-#define ABILITYEFFECT_COUNT_ON_FIELD            0x12
-#define ABILITYEFFECT_CHECK_ON_FIELD            0x13
-#define ABILITYEFFECT_MOVES_BLOCK_PARTNER		0x14
-#define ABILITYEFFECT_SWITCH_IN_WEATHER         0xFF
+#define ABILITYEFFECT_ON_SWITCHIN                0
+#define ABILITYEFFECT_ENDTURN                    1
+#define ABILITYEFFECT_MOVES_BLOCK                2
+#define ABILITYEFFECT_ABSORBING                  3
+#define ABILITYEFFECT_ON_DAMAGE                  4
+#define ABILITYEFFECT_IMMUNITY                   5
+#define ABILITYEFFECT_FORECAST                   6
+#define ABILITYEFFECT_SYNCHRONIZE                7
+#define ABILITYEFFECT_ATK_SYNCHRONIZE            8
+#define ABILITYEFFECT_INTIMIDATE1                9
+#define ABILITYEFFECT_INTIMIDATE2                10
+#define ABILITYEFFECT_TRACE                      11
+#define ABILITYEFFECT_CHECK_OTHER_SIDE           12
+#define ABILITYEFFECT_CHECK_BATTLER_SIDE         13
+#define ABILITYEFFECT_FIELD_SPORT                14
+#define ABILITYEFFECT_CHECK_FIELD_EXCEPT_BATTLER 15
+#define ABILITYEFFECT_COUNT_OTHER_SIDE           16
+#define ABILITYEFFECT_COUNT_BATTLER_SIDE         17
+#define ABILITYEFFECT_COUNT_ON_FIELD             18
+#define ABILITYEFFECT_CHECK_ON_FIELD             19
+#define ABILITYEFFECT_MUD_SPORT                  253
+#define ABILITYEFFECT_WATER_SPORT                254
+#define ABILITYEFFECT_SWITCH_IN_WEATHER          255
 
-#define ABILITY_ON_OPPOSING_FIELD(battlerId, abilityId) (AbilityBattleEffects(ABILITYEFFECT_CHECK_OTHER_SIDE, battlerId, abilityId, 0, 0))
-#define ABILITY_ON_FIELD(abilityId) (AbilityBattleEffects(ABILITYEFFECT_CHECK_ON_FIELD, 0, abilityId, 0, 0))
-#define ABILITY_ON_FIELD2(abilityId) (AbilityBattleEffects(ABILITYEFFECT_FIELD_SPORT, 0, abilityId, 0, 0))
+#define ABILITY_ON_OPPOSING_FIELD(battlerId, abilityId)(AbilityBattleEffects(ABILITYEFFECT_CHECK_OTHER_SIDE, battlerId, abilityId, 0, 0))
+#define ABILITY_ON_FIELD(abilityId)(AbilityBattleEffects(ABILITYEFFECT_CHECK_ON_FIELD, 0, abilityId, 0, 0))
+#define ABILITY_ON_FIELD2(abilityId)(AbilityBattleEffects(ABILITYEFFECT_FIELD_SPORT, 0, abilityId, 0, 0))
 
-#define ITEMEFFECT_ON_SWITCH_IN                 0x0
+// For the first argument of ItemBattleEffects, to deteremine which block of item effects to try
+#define ITEMEFFECT_ON_SWITCH_IN                 0
+#define ITEMEFFECT_NORMAL                       1
+#define ITEMEFFECT_DUMMY                        2 // Unused, empty
+#define ITEMEFFECT_MOVE_END                     3
+#define ITEMEFFECT_KINGSROCK_SHELLBELL          4
 
-extern bool8 WeatherHasEffect(void);
-#define WEATHER_HAS_EFFECT WeatherHasEffect()
-
-#define MON_CAN_BATTLE(mon) (((GetMonData(mon, MON_DATA_SPECIES, NULL) != SPECIES_NONE && !GetMonData(mon, MON_DATA_IS_EGG, NULL) && GetMonData(mon, MON_DATA_HP, NULL) != 0)))
-#define SPECIES_CANT_BATTLE(species) (species == SPECIES_NONE || species == SPECIES_EGG)
+#define WEATHER_HAS_EFFECT ((!AbilityBattleEffects(ABILITYEFFECT_CHECK_ON_FIELD, 0, ABILITY_CLOUD_NINE, 0, 0) && !AbilityBattleEffects(ABILITYEFFECT_CHECK_ON_FIELD, 0, ABILITY_AIR_LOCK, 0, 0)))
+#define WEATHER_HAS_EFFECT2 ((!AbilityBattleEffects(ABILITYEFFECT_FIELD_SPORT, 0, ABILITY_CLOUD_NINE, 0, 0) && !AbilityBattleEffects(ABILITYEFFECT_FIELD_SPORT, 0, ABILITY_AIR_LOCK, 0, 0)))
 
 #define BS_GET_TARGET                   0
 #define BS_GET_ATTACKER                 1
@@ -53,42 +58,40 @@ extern bool8 WeatherHasEffect(void);
 #define BS_GET_PLAYER2                  13
 #define BS_GET_OPPONENT2                14
 
-void __attribute__((long_call)) PressurePPLose(u8 bankDef, u8 bankAtk, u16 move);
-void __attribute__((long_call)) PressurePPLoseOnUsingPerishSong(u8 bankAtk);
-void __attribute__((long_call)) PressurePPLoseOnUsingImprision(u8 bankAtk);
+u8 GetBattlerForBattleScript(u8 caseId);
+void PressurePPLose(u8 target, u8 attacker, u16 move);
+void PressurePPLoseOnUsingImprison(u8 attacker);
+void PressurePPLoseOnUsingPerishSong(u8 attacker);
+void MarkBattlerForControllerExec(u8 battlerId);
+void MarkBattlerReceivedLinkData(u8 battlerId);
+void CancelMultiTurnMoves(u8 battler);
+bool8 WasUnableToUseMove(u8 battler);
+void PrepareStringBattle(u16 stringId, u8 battler);
+void ResetSentPokesToOpponentValue(void);
+void OpponentSwitchInResetSentPokesToOpponentValue(u8 battler);
+void UpdateSentPokesToOpponentValue(u8 battler);
+void BattleScriptPush(const u8 *bsPtr);
+void BattleScriptPushCursor(void);
+void BattleScriptPop(void);
+u8 TrySetCantSelectMoveBattleScript(void);
+u8 CheckMoveLimitations(u8 battlerId, u8 unusableMoves, u8 check);
+bool8 AreAllMovesUnusable(void);
+u8 GetImprisonedMovesCount(u8 battlerId, u16 move);
+u8 DoFieldEndTurnEffects(void);
+u8 DoBattlerEndTurnEffects(void);
+bool8 HandleWishPerishSongOnTurnEnd(void);
+bool8 HandleFaintedMonActions(void);
+void TryClearRageStatuses(void);
+u8 AtkCanceller_UnableToUseMove(void);
+bool8 HasNoMonsToSwitch(u8 battler, u8 partyIdBattlerOn1, u8 partyIdBattlerOn2);
+u8 CastformDataTypeChange(u8 battler);
+u8 AbilityBattleEffects(u8 caseID, u8 battler, u8 ability, u8 special, u16 moveArg);
+void BattleScriptExecute(const u8 *BS_ptr);
+void BattleScriptPushCursorAndCallback(const u8 *BS_ptr);
+u8 ItemBattleEffects(u8 caseID, u8 battlerId, bool8 moveTurn);
+void ClearFuryCutterDestinyBondGrudge(u8 battlerId);
+void HandleAction_RunBattleScript(void);
+u8 GetMoveTarget(u16 move, u8 setTarget);
+u8 IsMonDisobedient(void);
 
-/*
-void __attribute__((long_call)) MarkAllBufferBanksForExecution(void); // unused
-void __attribute__((long_call)) MarkBufferBankForExecution(u8 bank);
-void __attribute__((long_call)) sub_803F850(u8 arg0);
-void __attribute__((long_call)) CancelMultiTurnMoves(u8 bank);
-bool8 __attribute__((long_call)) WasUnableToUseMove(u8 bank);
-void __attribute__((long_call)) PrepareStringBattle(u16 stringId, u8 bank);
-void __attribute__((long_call)) ResetSentPokesToOpponentValue(void);
-void __attribute__((long_call)) sub_803F9EC(u8 bank);
-void __attribute__((long_call)) sub_803FA70(u8 bank);
-void __attribute__((long_call)) BattleScriptPush(const u8* bsPtr);
-void __attribute__((long_call)) BattleScriptPushCursor(void);
-void __attribute__((long_call)) BattleScriptPop(void);
-u8 __attribute__((long_call)) TrySetCantSelectMoveBattleScript(void);
-u8 __attribute__((long_call)) CheckMoveLimitations(u8 bank, u8 unusableMoves, u8 check);
-bool8 __attribute__((long_call)) AreAllMovesUnusable(void);
-u8 __attribute__((long_call)) GetImprisonedMovesCount(u8 bank, u16 move);
-u8 __attribute__((long_call)) UpdateTurnCounters(void);
-u8 __attribute__((long_call)) TurnBasedEffects(void);
-bool8 __attribute__((long_call)) HandleWishPerishSongOnTurnEnd(void);
-bool8 __attribute__((long_call)) HandleFaintedMonActions(void);
-void __attribute__((long_call)) TryClearRageStatuses(void);
-u8 __attribute__((long_call)) AtkCanceller_UnableToUseMove(void);
-bool8 __attribute__((long_call)) sub_80423F4(u8 bank, u8 r1, u8 r2);
-u8 __attribute__((long_call)) CastformDataTypeChange(u8 bank);
-u8 __attribute__((long_call)) AbilityBattleEffects(u8 caseID, u8 bank, u8 ability, u8 special, u16 moveArg);
-void __attribute__((long_call)) BattleScriptExecute(const u8* BS_ptr);
-void __attribute__((long_call)) BattleScriptPushCursorAndCallback(const u8* BS_ptr);
-//u8 __attribute__((long_call)) ItemBattleEffects(u8 caseID, u8 bank, bool8 moveTurn);
-void __attribute__((long_call)) ClearFuryCutterDestinyBondGrudge(u8 bank);
-void __attribute__((long_call)) HandleAction_RunBattleScript(void);
-u8 __attribute__((long_call)) GetMoveTarget(u16 move, u8 useMoveTarget);
-u8 __attribute__((long_call)) IsMonDisobedient(void);
-void __attribute__((long_call)) MarkBufferBankForExecution(u8 battlerId);
-*/
+#endif // GUARD_BATTLE_UTIL_H

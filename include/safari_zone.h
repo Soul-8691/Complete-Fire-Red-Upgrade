@@ -1,20 +1,21 @@
-#pragma once
+#ifndef GUARD_SAFARI_ZONE_H
+#define GUARD_SAFARI_ZONE_H
 
 #include "global.h"
 
 extern u8 gNumSafariBalls;
+extern u16 gSafariZoneStepCounter;
 
-bool8 __attribute__((long_call)) GetSafariZoneFlag(void);
-void __attribute__((long_call)) SetSafariZoneFlag(void);
-void __attribute__((long_call)) ResetSafariZoneFlag(void);
+bool32 GetSafariZoneFlag(void);
+void SetSafariZoneFlag(void);
+void ResetSafariZoneFlag(void);
 
-/*
 void EnterSafariMode(void);
 void ExitSafariMode(void);
 
 bool8 SafariZoneTakeStep(void);
 void SafariZoneRetirePrompt(void);
 
-struct Pokeblock *SafariZoneGetActivePokeblock(void);
-void SafariZoneActivatePokeblockFeeder(u8 pokeblock_index);
-*/
+void CB2_EndSafariBattle(void);
+
+#endif // GUARD_SAFARI_ZONE_H
