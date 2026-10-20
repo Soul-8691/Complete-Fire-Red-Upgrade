@@ -26,7 +26,8 @@
 
 // Viewer that draws a map's layout and object events (as seen in a map editor).
 // D-Pad moves the cursor (the view follows it), B fades out and switches to the return callback.
-// When the cursor is on a warp, the map it leads to is shown in a text box.
+// When the cursor is on a warp, the map it leads to is shown in a text box, and A opens that map
+// with the cursor on the warp's target.
 
 #define MAP_VIEWER_WIDTH  15 // Screen size in metatiles
 #define MAP_VIEWER_HEIGHT 10
@@ -200,6 +201,8 @@ static void CB2_OpenCurrentMapViewer(void);
 static void CB2_MapViewer(void);
 static void VBlankCB_MapViewer(void);
 static void Task_MapViewerInit(u8 taskId);
+static void Task_MapViewerLoadMap(u8 taskId);
+static void Task_MapViewerWaitFadeThenLoadMap(u8 taskId);
 static void Task_MapViewer(u8 taskId);
 static void Task_MapViewerExit(u8 taskId);
 static void MapViewer_Redraw(const struct MapHeader *header, s16 scrollX, s16 scrollY);
@@ -265,85 +268,159 @@ static void VBlankCB_MapViewer(void)
     TransferPlttBuffer();
 }
 
-static void Task_MapViewerInit(u8 taskId)
+// Puts the cursor on a metatile, with the view centred on it as far as the map allows
+static void MapViewer_SetCursor(u8 taskId, s16 x, s16 y)
 {
     s16 *data = gTasks[taskId].data;
     const struct MapHeader *header = (const struct MapHeader *)GetWordTaskArg(taskId, tHeader);
-    const struct MapLayout *layout = header->mapLayout;
+    s16 maxX = max(0, header->mapLayout->width - MAP_VIEWER_WIDTH);
+    s16 maxY = max(0, header->mapLayout->height - MAP_VIEWER_HEIGHT);
+
+    tCursorX = x;
+    tCursorY = y;
+    tScrollX = min(max(0, x - MAP_VIEWER_WIDTH / 2), maxX);
+    tScrollY = min(max(0, y - MAP_VIEWER_HEIGHT / 2), maxY);
+}
+
+// One-time setup of everything that doesn't depend on the map, then loads the first map
+static void Task_MapViewerInit(u8 taskId)
+{
+    s16 *data = gTasks[taskId].data;
+
+    DmaFill16(3, 0, (void *)VRAM, VRAM_SIZE);
+    DmaFill32(3, 0, (void *)OAM, OAM_SIZE);
+    DmaFill16(3, 0, (void *)PLTT, PLTT_SIZE);
+    ResetBgsAndClearDma3BusyFlags(0);
+    InitBgsFromTemplates(0, sMapViewerBgTemplates, NELEMS(sMapViewerBgTemplates));
+    SetBgTilemapBuffer(BG_TOP, AllocZeroed(MAP_VIEWER_TILEMAP_SIZE));
+    SetBgTilemapBuffer(BG_MIDDLE, AllocZeroed(MAP_VIEWER_TILEMAP_SIZE));
+    SetBgTilemapBuffer(BG_BOTTOM, AllocZeroed(MAP_VIEWER_TILEMAP_SIZE));
+    SetBgTilemapBuffer(BG_OVERLAY, AllocZeroed(MAP_VIEWER_TILEMAP_SIZE)); // Before InitWindows, so it uses this buffer
+    ChangeBgX(BG_OVERLAY, 0, BG_COORD_SET);
+    ChangeBgY(BG_OVERLAY, 0, BG_COORD_SET);
+    ChangeBgX(BG_TOP, 0, BG_COORD_SET);
+    ChangeBgY(BG_TOP, 0, BG_COORD_SET);
+    ChangeBgX(BG_MIDDLE, 0, BG_COORD_SET);
+    ChangeBgY(BG_MIDDLE, 0, BG_COORD_SET);
+    ChangeBgX(BG_BOTTOM, 0, BG_COORD_SET);
+    ChangeBgY(BG_BOTTOM, 0, BG_COORD_SET);
+    InitWindows(sMapViewerWindowTemplates);
+    DeactivateAllTextPrinters();
+
+    LoadBgTiles(BG_OVERLAY, sHighlightTile, sizeof(sHighlightTile), HIGHLIGHT_TILE);
+    LoadPalette(&sHighlightWarpColor, BG_PLTT_ID(PALSLOT_HIGHLIGHT_WARP) + 1, sizeof(u16));
+    LoadPalette(&sHighlightTrainerColor, BG_PLTT_ID(PALSLOT_HIGHLIGHT_TRAINER) + 1, sizeof(u16));
+    LoadPalette(sInfoTextPal, BG_PLTT_ID(PALSLOT_INFO_TEXT), sizeof(sInfoTextPal));
+    BlendPalettes(PALETTES_ALL, 16, RGB_BLACK); // Stays black until the map is loaded and faded in
+
+    SetGpuReg(REG_OFFSET_DISPCNT, DISPCNT_MODE_0 | DISPCNT_OBJ_ON | DISPCNT_OBJ_1D_MAP);
+    // Highlights are blended half and half with the map and sprites under them
+    SetGpuReg(REG_OFFSET_BLDCNT, BLDCNT_TGT1_BG0 | BLDCNT_EFFECT_BLEND
+                               | BLDCNT_TGT2_BG1 | BLDCNT_TGT2_BG2 | BLDCNT_TGT2_BG3 | BLDCNT_TGT2_OBJ);
+    SetGpuReg(REG_OFFSET_BLDALPHA, BLDALPHA_BLEND(8, 8));
+    // Window 0 covers the info box while it's shown: no blending and no sprites there, so the box is solid
+    SetGpuReg(REG_OFFSET_WIN0H, WIN_RANGE(0, DISPLAY_WIDTH));
+    SetGpuReg(REG_OFFSET_WININ, WININ_WIN0_BG_ALL);
+    SetGpuReg(REG_OFFSET_WINOUT, WINOUT_WIN01_ALL);
+    ShowBg(BG_OVERLAY);
+    ShowBg(BG_TOP);
+    ShowBg(BG_MIDDLE);
+    ShowBg(BG_BOTTOM);
+    SetVBlankCallback(VBlankCB_MapViewer);
+
+    tInfoWindow = WIN_INFO_NONE;
+    MapViewer_SetCursor(taskId, 0, 0); // Start at the top left corner
+    tState = 0;
+    gTasks[taskId].func = Task_MapViewerLoadMap;
+}
+
+// Loads tHeader's map with the cursor where it was set. The screen must already be black.
+// Each step that loads palettes blends them back to black, since the VBlank callback is running.
+static void Task_MapViewerLoadMap(u8 taskId)
+{
+    s16 *data = gTasks[taskId].data;
+    const struct MapHeader *header = (const struct MapHeader *)GetWordTaskArg(taskId, tHeader);
 
     switch (tState)
     {
     case 0:
-        DmaFill16(3, 0, (void *)VRAM, VRAM_SIZE);
-        DmaFill32(3, 0, (void *)OAM, OAM_SIZE);
-        DmaFill16(3, 0, (void *)PLTT, PLTT_SIZE);
-        ResetBgsAndClearDma3BusyFlags(0);
-        InitBgsFromTemplates(0, sMapViewerBgTemplates, NELEMS(sMapViewerBgTemplates));
-        SetBgTilemapBuffer(BG_TOP, AllocZeroed(MAP_VIEWER_TILEMAP_SIZE));
-        SetBgTilemapBuffer(BG_MIDDLE, AllocZeroed(MAP_VIEWER_TILEMAP_SIZE));
-        SetBgTilemapBuffer(BG_BOTTOM, AllocZeroed(MAP_VIEWER_TILEMAP_SIZE));
-        SetBgTilemapBuffer(BG_OVERLAY, AllocZeroed(MAP_VIEWER_TILEMAP_SIZE)); // Before InitWindows, so it uses this buffer
-        ChangeBgX(BG_OVERLAY, 0, BG_COORD_SET);
-        ChangeBgY(BG_OVERLAY, 0, BG_COORD_SET);
-        ChangeBgX(BG_TOP, 0, BG_COORD_SET);
-        ChangeBgY(BG_TOP, 0, BG_COORD_SET);
-        ChangeBgX(BG_MIDDLE, 0, BG_COORD_SET);
-        ChangeBgY(BG_MIDDLE, 0, BG_COORD_SET);
-        ChangeBgX(BG_BOTTOM, 0, BG_COORD_SET);
-        ChangeBgY(BG_BOTTOM, 0, BG_COORD_SET);
-        InitWindows(sMapViewerWindowTemplates);
-        DeactivateAllTextPrinters();
-        SetGpuReg(REG_OFFSET_BLDCNT, 0);
+        CopyMapTilesetsToVram(header->mapLayout);
+        LoadMapTilesetPalettes(header->mapLayout);
+        BlendPalettes(PALETTES_ALL, 16, RGB_BLACK);
         tState++;
         break;
     case 1:
-        CopyMapTilesetsToVram(layout);
-        LoadMapTilesetPalettes(layout);
-        LoadBgTiles(BG_OVERLAY, sHighlightTile, sizeof(sHighlightTile), HIGHLIGHT_TILE);
-        LoadPalette(&sHighlightWarpColor, BG_PLTT_ID(PALSLOT_HIGHLIGHT_WARP) + 1, sizeof(u16));
-        LoadPalette(&sHighlightTrainerColor, BG_PLTT_ID(PALSLOT_HIGHLIGHT_TRAINER) + 1, sizeof(u16));
-        LoadPalette(sInfoTextPal, BG_PLTT_ID(PALSLOT_INFO_TEXT), sizeof(sInfoTextPal));
-        tState++;
-        break;
-    case 2:
-        tScrollX = 0; // Start at the top left corner
-        tScrollY = 0;
-        tCursorX = 0;
-        tCursorY = 0;
-        tInfoWindow = WIN_INFO_NONE;
         MapViewer_Redraw(header, tScrollX, tScrollY);
-        tState++;
-        break;
-    case 3:
+
+        // Rebuild every sprite for the new map
+        ResetSpriteData();
+        FreeAllSpritePalettes();
         MapViewer_CreateObjectSprites(header);
         LoadSpriteSheet(&sCursorSpriteSheet);
         LoadSpritePalette(&sCursorSpritePalette);
         tCursorSprite = CreateSprite(&sCursorSpriteTemplate, 0, 0, 0);
         MapViewer_RefreshOverlay(taskId); // Also positions the cursor
         MapViewer_UpdateSprites(tScrollX, tScrollY);
+        BlendPalettes(PALETTES_ALL, 16, RGB_BLACK);
         tState++;
         break;
-    case 4:
+    case 2:
         if (IsDma3ManagerBusyWithBgCopy())
             break;
-        SetGpuReg(REG_OFFSET_DISPCNT, GetGpuReg(REG_OFFSET_DISPCNT) | DISPCNT_MODE_0 | DISPCNT_OBJ_ON | DISPCNT_OBJ_1D_MAP);
-        // Highlights are blended half and half with the map and sprites under them
-        SetGpuReg(REG_OFFSET_BLDCNT, BLDCNT_TGT1_BG0 | BLDCNT_EFFECT_BLEND
-                                   | BLDCNT_TGT2_BG1 | BLDCNT_TGT2_BG2 | BLDCNT_TGT2_BG3 | BLDCNT_TGT2_OBJ);
-        SetGpuReg(REG_OFFSET_BLDALPHA, BLDALPHA_BLEND(8, 8));
-        // Window 0 covers the info box while it's shown: no blending and no sprites there, so the box is solid
-        SetGpuReg(REG_OFFSET_WIN0H, WIN_RANGE(0, DISPLAY_WIDTH));
-        SetGpuReg(REG_OFFSET_WININ, WININ_WIN0_BG_ALL);
-        SetGpuReg(REG_OFFSET_WINOUT, WINOUT_WIN01_ALL);
-        ShowBg(BG_OVERLAY);
-        ShowBg(BG_TOP);
-        ShowBg(BG_MIDDLE);
-        ShowBg(BG_BOTTOM);
         BeginNormalPaletteFade(PALETTES_ALL, 0, 16, 0, RGB_BLACK);
-        SetVBlankCallback(VBlankCB_MapViewer);
         gTasks[taskId].func = Task_MapViewer;
         break;
     }
+}
+
+static void Task_MapViewerWaitFadeThenLoadMap(u8 taskId)
+{
+    if (!gPaletteFade.active)
+    {
+        gTasks[taskId].tState = 0;
+        gTasks[taskId].func = Task_MapViewerLoadMap;
+    }
+}
+
+// The map a warp leads to, or NULL if it can't be shown (dynamic warps lead wherever the player came from)
+static const struct MapHeader *MapViewer_GetWarpDestination(const struct WarpEvent *warp)
+{
+    const struct MapHeader *destHeader;
+
+    if (warp == NULL)
+        return NULL;
+    if (warp->mapGroup == MAP_DYNAMIC_GROUP && warp->mapNum == MAP_DYNAMIC_NUM)
+        return NULL;
+
+    destHeader = Overworld_GetMapHeaderByGroupAndId(warp->mapGroup, warp->mapNum);
+    if (destHeader == NULL || destHeader->mapLayout == NULL)
+        return NULL;
+    return destHeader;
+}
+
+// Switches the viewer to the warp's destination map, with the cursor on the target warp
+static bool8 MapViewer_TryFollowWarp(u8 taskId, const struct WarpEvent *warp)
+{
+    const struct MapHeader *destHeader = MapViewer_GetWarpDestination(warp);
+    const struct MapEvents *destEvents;
+    s16 x = 0, y = 0;
+
+    if (destHeader == NULL)
+        return FALSE;
+
+    destEvents = destHeader->events;
+    if (destEvents != NULL && warp->warpId < destEvents->warpCount)
+    {
+        x = destEvents->warps[warp->warpId].x;
+        y = destEvents->warps[warp->warpId].y;
+    }
+
+    SetWordTaskArg(taskId, tHeader, (u32)destHeader);
+    MapViewer_SetCursor(taskId, x, y);
+    PlaySE(SE_WARP_IN);
+    BeginNormalPaletteFade(PALETTES_ALL, 0, 0, 16, RGB_BLACK);
+    gTasks[taskId].func = Task_MapViewerWaitFadeThenLoadMap;
+    return TRUE;
 }
 
 static void DrawMetatileLayer(u8 bg, u16 offset, const u16 *tiles)
@@ -647,6 +724,9 @@ static void Task_MapViewer(u8 taskId)
         gTasks[taskId].func = Task_MapViewerExit;
         return;
     }
+
+    if (JOY_NEW(A_BUTTON) && MapViewer_TryFollowWarp(taskId, MapViewer_GetWarpAt(header, tCursorX, tCursorY)))
+        return;
 
     if (JOY_REPT(DPAD_LEFT) && cursorX > 0)
         cursorX--;
