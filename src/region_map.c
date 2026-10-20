@@ -297,7 +297,7 @@ extern u8 GetSelectedRegionMap(void);
 
 static void RegionMap_PrintTopBarAfterCursorMove(void);
 static bool8 RegionMap_CanOpenFieldMapPreview(void);
-static const struct MapLayout *RegionMap_GetMapsecLayout(u16 mapsec);
+static const struct MapHeader *RegionMap_GetMapsecHeader(u16 mapsec);
 static void RegionMap_TryOpenFieldMapViewer(u8 taskId);
 static void RegionMap_RestoreCursorAfterViewer(void);
 
@@ -352,7 +352,7 @@ static bool8 RegionMap_CanOpenFieldMapPreview(void)
     if (GetSelectedMapsecType(LAYER_MAP) != MAPSECTYPE_VISITED
         && GetSelectedMapsecType(LAYER_MAP) != MAPSECTYPE_ROUTE)
         return FALSE;
-    if (RegionMap_GetMapsecLayout(GetMapsecUnderCursor()) == NULL)
+    if (RegionMap_GetMapsecHeader(GetMapsecUnderCursor()) == NULL)
         return FALSE;
     return TRUE;
 }
@@ -457,7 +457,7 @@ void Task_RegionMap_CFRU(u8 taskId)
     }
 }
 
-static const struct MapLayout *RegionMap_GetMapsecLayout(u16 mapsec)
+static const struct MapHeader *RegionMap_GetMapsecHeader(u16 mapsec)
 {
     u16 idx;
     const struct MapHeader *header;
@@ -467,10 +467,10 @@ static const struct MapLayout *RegionMap_GetMapsecLayout(u16 mapsec)
 
     idx = mapsec - KANTO_MAPSEC_START;
     header = Overworld_GetMapHeaderByGroupAndId(sMapFlyDestinations[idx][0], sMapFlyDestinations[idx][1]);
-    if (header == NULL)
+    if (header == NULL || header->mapLayout == NULL)
         return NULL;
 
-    return header->mapLayout;
+    return header;
 }
 
 static void CB2_RegionMap_ReturnFromFieldMapViewer(void)
@@ -485,7 +485,7 @@ static void CB2_RegionMap_ReturnFromFieldMapViewer(void)
 
 static void CB2_RegionMap_OpenFieldMapViewer(void)
 {
-    OpenMapViewer(RegionMap_GetMapsecLayout(sRegionMap->sViewerMapsec), CB2_RegionMap_ReturnFromFieldMapViewer);
+    OpenMapViewer(RegionMap_GetMapsecHeader(sRegionMap->sViewerMapsec), CB2_RegionMap_ReturnFromFieldMapViewer);
 }
 
 static void Task_RegionMap_WaitFadeThenOpenViewer(u8 taskId)
@@ -509,7 +509,7 @@ static void RegionMap_TryOpenFieldMapViewer(u8 taskId)
 {
     u16 mapsec = GetMapsecUnderCursor();
 
-    if (RegionMap_GetMapsecLayout(mapsec) == NULL)
+    if (RegionMap_GetMapsecHeader(mapsec) == NULL)
         return;
 
     sRegionMap->sViewerMapsec = mapsec;

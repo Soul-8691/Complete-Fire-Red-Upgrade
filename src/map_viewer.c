@@ -7,11 +7,18 @@
 #include "../include/overworld.h"
 #include "../include/fieldmap.h"
 #include "../include/global.fieldmap.h"
+#include "../include/event_data.h"
+#include "../include/event_object_movement.h"
 #include "../include/map_viewer.h"
 #include "../include/constants/songs.h"
 #include "../include/constants/rgb.h"
+#include "../include/constants/event_object_movement.h"
 
-// Viewer that draws a map layout (as seen in a map editor).
+// From constants/event_objects.h, which can't be included here (needs generated map_event_ids.h)
+#define OBJ_EVENT_GFX_VARS 240
+#define OBJ_KIND_CLONE     255
+
+// Viewer that draws a map's layout and object events (as seen in a map editor).
 // D-Pad scrolls, B fades out and switches to the return callback.
 
 #define MAP_VIEWER_WIDTH  15 // Screen size in metatiles
@@ -59,10 +66,18 @@ static const struct BgTemplate sMapViewerBgTemplates[] =
 #define tState    data[0]
 #define tScrollX  data[1]
 #define tScrollY  data[2]
-#define tLayout   3 // Word arg, data[3] and data[4]
+#define tHeader   3 // Word arg, data[3] and data[4]
 #define tCallback 5 // Word arg, data[5] and data[6]
 
+// Object sprite data
+#define sMapX      data[0]
+#define sMapY      data[1]
+#define sElevation data[2]
+
 extern u8 GetAttributeByMetatileIdAndMapLayout(const struct MapLayout *mapLayout, u16 metatile, u8 attributeType);
+extern const u8 gInitialMovementTypeFacingDirections[];
+extern const u8 sElevationToPriority[];
+extern const u8 sElevationToSubspriteTableNum[];
 
 static void Task_WaitFadeThenOpenCurrentMapViewer(u8 taskId);
 static void CB2_OpenCurrentMapViewer(void);
@@ -72,6 +87,8 @@ static void Task_MapViewerInit(u8 taskId);
 static void Task_MapViewer(u8 taskId);
 static void Task_MapViewerExit(u8 taskId);
 static void MapViewer_Redraw(const struct MapLayout *layout, s16 scrollX, s16 scrollY);
+static void MapViewer_CreateObjectSprites(const struct MapHeader *header);
+static void MapViewer_UpdateObjectSprites(s16 scrollX, s16 scrollY);
 
 void ShowCurrentMapViewer(void)
 {
@@ -91,10 +108,10 @@ static void Task_WaitFadeThenOpenCurrentMapViewer(u8 taskId)
 
 static void CB2_OpenCurrentMapViewer(void)
 {
-    OpenMapViewer(gMapHeader.mapLayout, CB2_ReturnToFieldContinueScript);
+    OpenMapViewer(&gMapHeader, CB2_ReturnToFieldContinueScript);
 }
 
-void OpenMapViewer(const struct MapLayout *layout, MainCallback returnCallback)
+void OpenMapViewer(const struct MapHeader *header, MainCallback returnCallback)
 {
     u8 taskId;
 
@@ -108,7 +125,7 @@ void OpenMapViewer(const struct MapLayout *layout, MainCallback returnCallback)
     ResetTasks();
 
     taskId = CreateTask(Task_MapViewerInit, 0);
-    SetWordTaskArg(taskId, tLayout, (u32)layout);
+    SetWordTaskArg(taskId, tHeader, (u32)header);
     SetWordTaskArg(taskId, tCallback, (u32)returnCallback);
     SetMainCallback2(CB2_MapViewer);
 }
@@ -132,7 +149,8 @@ static void VBlankCB_MapViewer(void)
 static void Task_MapViewerInit(u8 taskId)
 {
     s16 *data = gTasks[taskId].data;
-    const struct MapLayout *layout = (const struct MapLayout *)GetWordTaskArg(taskId, tLayout);
+    const struct MapHeader *header = (const struct MapHeader *)GetWordTaskArg(taskId, tHeader);
+    const struct MapLayout *layout = header->mapLayout;
 
     switch (tState)
     {
@@ -166,9 +184,14 @@ static void Task_MapViewerInit(u8 taskId)
         tState++;
         break;
     case 3:
+        MapViewer_CreateObjectSprites(header);
+        MapViewer_UpdateObjectSprites(tScrollX, tScrollY);
+        tState++;
+        break;
+    case 4:
         if (IsDma3ManagerBusyWithBgCopy())
             break;
-        SetGpuReg(REG_OFFSET_DISPCNT, DISPCNT_MODE_0 | DISPCNT_OBJ_1D_MAP);
+        SetGpuReg(REG_OFFSET_DISPCNT, DISPCNT_MODE_0 | DISPCNT_OBJ_ON | DISPCNT_OBJ_1D_MAP);
         ShowBg(BG_TOP);
         ShowBg(BG_MIDDLE);
         ShowBg(BG_BOTTOM);
@@ -246,10 +269,106 @@ static void MapViewer_Redraw(const struct MapLayout *layout, s16 scrollX, s16 sc
     ScheduleBgCopyTilemapToVram(BG_BOTTOM);
 }
 
+// Same checks as TrySpawnObjectEventTemplate, plus objects that never have a visible sprite
+static bool8 MapViewer_ShouldShowObject(const struct ObjectEventTemplate *template)
+{
+    if (template->kind == OBJ_KIND_CLONE) // Copies of objects from connected maps
+        return FALSE;
+    if (FlagGet(template->flagId)) // Hidden, e.g. item balls that were already picked up
+        return FALSE;
+    if (template->objUnion.normal.movementType == MOVEMENT_TYPE_INVISIBLE)
+        return FALSE;
+    return TRUE;
+}
+
+// Mirrors TrySetupObjectEventSprite in event_object_movement.c
+static void MapViewer_CreateObjectSprite(const struct ObjectEventTemplate *template)
+{
+    u8 spriteId;
+    u8 graphicsId = template->graphicsId;
+    u8 elevation = template->objUnion.normal.elevation;
+    struct Sprite *sprite;
+    struct SpriteTemplate spriteTemplate;
+    const struct SubspriteTable *subspriteTables;
+    const struct ObjectEventGraphicsInfo *graphicsInfo;
+
+    if (graphicsId >= OBJ_EVENT_GFX_VARS)
+        graphicsId = VarGetObjectEventGraphicsId(graphicsId - OBJ_EVENT_GFX_VARS);
+
+    graphicsInfo = GetObjectEventGraphicsInfo(graphicsId);
+    // The NPC palettes are already in their fixed slots, only the player and special slots change per object
+    if (graphicsInfo->paletteSlot == PALSLOT_PLAYER || graphicsInfo->paletteSlot == PALSLOT_NPC_SPECIAL)
+        PatchObjectPalette(graphicsInfo->paletteTag, graphicsInfo->paletteSlot);
+
+    CopyObjectGraphicsInfoToSpriteTemplate(graphicsId, SpriteCallbackDummy, &spriteTemplate, &subspriteTables);
+    spriteTemplate.paletteTag = TAG_NONE;
+    spriteId = CreateSprite(&spriteTemplate, 0, 0, 0);
+    if (spriteId == MAX_SPRITES)
+        return;
+
+    sprite = &gSprites[spriteId];
+    sprite->centerToCornerVecX = -(graphicsInfo->width >> 1);
+    sprite->centerToCornerVecY = -(graphicsInfo->height >> 1);
+    sprite->oam.paletteNum = graphicsInfo->paletteSlot;
+    if (subspriteTables != NULL)
+    {
+        SetSubspriteTables(sprite, subspriteTables);
+        sprite->subspriteMode = SUBSPRITES_IGNORE_PRIORITY;
+    }
+    sprite->subspriteTableNum = sElevationToSubspriteTableNum[elevation];
+    sprite->oam.priority = sElevationToPriority[elevation];
+    if (!graphicsInfo->inanimate)
+        StartSpriteAnim(sprite, GetFaceDirectionAnimNum(gInitialMovementTypeFacingDirections[template->objUnion.normal.movementType]));
+
+    sprite->sMapX = template->x;
+    sprite->sMapY = template->y;
+    sprite->sElevation = elevation;
+}
+
+static void MapViewer_CreateObjectSprites(const struct MapHeader *header)
+{
+    u8 i;
+    const struct MapEvents *events = header->events;
+
+    InitObjectEventPalettes(0); // Same NPC palette slots the field uses
+
+    if (events == NULL)
+        return;
+
+    for (i = 0; i < events->objectEventCount; i++)
+    {
+        if (MapViewer_ShouldShowObject(&events->objectEvents[i]))
+            MapViewer_CreateObjectSprite(&events->objectEvents[i]);
+    }
+}
+
+// Every sprite in the viewer is an object sprite, so just move them all
+static void MapViewer_UpdateObjectSprites(s16 scrollX, s16 scrollY)
+{
+    u8 i;
+
+    for (i = 0; i < MAX_SPRITES; i++)
+    {
+        struct Sprite *sprite = &gSprites[i];
+
+        if (!sprite->inUse)
+            continue;
+
+        // Bottom of the sprite sits on the bottom of its metatile, as in the field
+        sprite->x = (sprite->sMapX - scrollX) * 16 + 8;
+        sprite->y = (sprite->sMapY - scrollY) * 16 + 16 + sprite->centerToCornerVecY;
+        // OAM coordinates wrap, so anything well off screen must be hidden
+        sprite->invisible = (sprite->x < -32 || sprite->x > DISPLAY_WIDTH + 32
+                          || sprite->y < -32 || sprite->y > DISPLAY_HEIGHT + 32);
+        SetObjectSubpriorityByElevation(sprite->sElevation, sprite, 1);
+    }
+}
+
 static void Task_MapViewer(u8 taskId)
 {
     s16 *data = gTasks[taskId].data;
-    const struct MapLayout *layout = (const struct MapLayout *)GetWordTaskArg(taskId, tLayout);
+    const struct MapHeader *header = (const struct MapHeader *)GetWordTaskArg(taskId, tHeader);
+    const struct MapLayout *layout = header->mapLayout;
     s16 maxX = max(0, layout->width - MAP_VIEWER_WIDTH);
     s16 maxY = max(0, layout->height - MAP_VIEWER_HEIGHT);
     s16 scrollX = tScrollX;
@@ -280,6 +399,7 @@ static void Task_MapViewer(u8 taskId)
         tScrollX = scrollX;
         tScrollY = scrollY;
         MapViewer_Redraw(layout, scrollX, scrollY);
+        MapViewer_UpdateObjectSprites(scrollX, scrollY);
     }
 }
 

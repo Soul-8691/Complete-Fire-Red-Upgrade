@@ -7,5 +7,6 @@
 void ShowCurrentMapViewer(void);
 
 // Must be called from a main callback (not a task) while the screen is faded to black.
-// Resets tasks and sprites, shows the given layout, then fades out and switches to returnCallback.
-void OpenMapViewer(const struct MapLayout *layout, MainCallback returnCallback);
+// Resets tasks and sprites, shows the given map's layout and object events,
+// then fades out and switches to returnCallback.
+void OpenMapViewer(const struct MapHeader *header, MainCallback returnCallback);
