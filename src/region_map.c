@@ -349,7 +349,9 @@ static bool8 RegionMap_CanOpenFieldMapPreview(void)
         return FALSE;
     if (GetMapsecUnderCursor() == MAPSEC_NONE)
         return FALSE;
+    // Towns and cities can be viewed before they've been visited
     if (GetSelectedMapsecType(LAYER_MAP) != MAPSECTYPE_VISITED
+        && GetSelectedMapsecType(LAYER_MAP) != MAPSECTYPE_NOT_VISITED
         && GetSelectedMapsecType(LAYER_MAP) != MAPSECTYPE_ROUTE)
         return FALSE;
     if (RegionMap_GetMapsecHeader(GetMapsecUnderCursor()) == NULL)
@@ -485,7 +487,9 @@ static void CB2_RegionMap_ReturnFromFieldMapViewer(void)
 
 static void CB2_RegionMap_OpenFieldMapViewer(void)
 {
-    OpenMapViewer(RegionMap_GetMapsecHeader(sRegionMap->sViewerMapsec), CB2_RegionMap_ReturnFromFieldMapViewer);
+    u16 idx = sRegionMap->sViewerMapsec - KANTO_MAPSEC_START; // Checked by RegionMap_GetMapsecHeader before opening
+
+    OpenMapViewer(sMapFlyDestinations[idx][0], sMapFlyDestinations[idx][1], CB2_RegionMap_ReturnFromFieldMapViewer);
 }
 
 static void Task_RegionMap_WaitFadeThenOpenViewer(u8 taskId)

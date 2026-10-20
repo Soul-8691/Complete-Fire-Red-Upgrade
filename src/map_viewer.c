@@ -11,6 +11,9 @@
 #include "../include/event_data.h"
 #include "../include/event_object_movement.h"
 #include "../include/region_map.h"
+#include "../include/wild_encounter.h"
+#include "../include/pokemon_icon.h"
+#include "../include/characters.h"
 #include "../include/map_viewer.h"
 #include "../include/constants/songs.h"
 #include "../include/constants/rgb.h"
@@ -23,11 +26,13 @@
 #define OBJ_KIND_CLONE     255
 #define MAP_DYNAMIC_GROUP  0x7F // MAP_DYNAMIC: a warp back to wherever the player came from
 #define MAP_DYNAMIC_NUM    0x7F
+#define MAP_UNDEFINED_GROUP 0xFF // Ends gWildMonHeaders
 
 // Viewer that draws a map's layout and object events (as seen in a map editor).
 // D-Pad moves the cursor (the view follows it), B fades out and switches to the return callback.
 // When the cursor is on a warp, the map it leads to is shown in a text box, and A opens that map
 // with the cursor on the warp's target.
+// Holding L shows the map's wild encounter slots, one page per encounter method (D-Pad changes page).
 
 #define MAP_VIEWER_WIDTH  15 // Screen size in metatiles
 #define MAP_VIEWER_HEIGHT 10
@@ -104,6 +109,7 @@ enum
 {
     WIN_INFO_TOP,
     WIN_INFO_BOTTOM,
+    WIN_WILD_PANEL, // Full screen. Never shown at the same time as the info box, so it reuses its tiles.
     WIN_INFO_NONE = 0xFF,
 };
 
@@ -131,7 +137,73 @@ static const struct WindowTemplate sMapViewerWindowTemplates[] =
         .paletteNum = PALSLOT_INFO_TEXT,
         .baseBlock = HIGHLIGHT_TILE + 1 + 30 * INFO_WINDOW_HEIGHT,
     },
+    [WIN_WILD_PANEL] =
+    {
+        .bg = BG_OVERLAY,
+        .tilemapLeft = 0,
+        .tilemapTop = 0,
+        .width = 30,
+        .height = 20,
+        .paletteNum = PALSLOT_INFO_TEXT,
+        .baseBlock = HIGHLIGHT_TILE + 1, // Tiles 2-601, which spill into the free start of char block 3
+    },
     DUMMY_WIN_TEMPLATE
+};
+
+// Wild encounter panel: a header line, then a 3x4 grid with one cell per encounter slot
+enum
+{
+    WILD_METHOD_LAND,
+    WILD_METHOD_WATER,
+    WILD_METHOD_ROCK_SMASH,
+    WILD_METHOD_OLD_ROD,
+    WILD_METHOD_GOOD_ROD,
+    WILD_METHOD_SUPER_ROD,
+    WILD_METHOD_COUNT,
+};
+
+#define WILD_PANEL_MAX_SLOTS  LAND_WILD_COUNT
+#define WILD_PANEL_COLUMNS    3
+#define WILD_PANEL_HEADER_H   16
+#define WILD_PANEL_CELL_W     80
+#define WILD_PANEL_CELL_H     36
+
+// Chance of each slot being picked, in %. Same as the tables in wild_encounter.c
+static const u8 sLandSlotRates[LAND_WILD_COUNT] = {20, 20, 10, 10, 10, 10, 5, 5, 4, 4, 1, 1};
+static const u8 sWaterSlotRates[WATER_WILD_COUNT] = {60, 30, 5, 4, 1};
+static const u8 sFishingSlotRates[FISH_WILD_COUNT] = {70, 30, 60, 20, 20, 40, 40, 15, 4, 1}; // Old, Good, Super Rod
+
+struct WildMethod
+{
+    const u8 *name;
+    u8 firstSlot; // The rods share the fishing table
+    u8 numSlots;
+    const u8 *slotRates;
+};
+
+extern const u8 gText_MapViewer_Land[];
+extern const u8 gText_MapViewer_Water[];
+extern const u8 gText_MapViewer_RockSmash[];
+extern const u8 gText_MapViewer_OldRod[];
+extern const u8 gText_MapViewer_GoodRod[];
+extern const u8 gText_MapViewer_SuperRod[];
+
+static const struct WildMethod sWildMethods[WILD_METHOD_COUNT] =
+{
+    [WILD_METHOD_LAND]       = {gText_MapViewer_Land,      0, LAND_WILD_COUNT,  sLandSlotRates},
+    [WILD_METHOD_WATER]      = {gText_MapViewer_Water,     0, WATER_WILD_COUNT, sWaterSlotRates},
+    [WILD_METHOD_ROCK_SMASH] = {gText_MapViewer_RockSmash, 0, ROCK_WILD_COUNT,  sWaterSlotRates},
+    [WILD_METHOD_OLD_ROD]    = {gText_MapViewer_OldRod,    0, 2,                sFishingSlotRates},
+    [WILD_METHOD_GOOD_ROD]   = {gText_MapViewer_GoodRod,   2, 3,                sFishingSlotRates + 2},
+    [WILD_METHOD_SUPER_ROD]  = {gText_MapViewer_SuperRod,  5, 5,                sFishingSlotRates + 5},
+};
+
+static const u8 sWildPanelHeaderColors[] = {1, 2, 3};
+
+struct WildPanel
+{
+    u8 iconSpriteIds[WILD_PANEL_MAX_SLOTS];
+    u8 numIcons;
 };
 
 // Cursor: 16x16 square outline, black outside and white inside so it shows up on anything
@@ -182,11 +254,17 @@ static const struct SpriteTemplate sCursorSpriteTemplate =
 #define tCursorY     data[8]
 #define tCursorSprite data[9]
 #define tInfoWindow  data[10]
+#define tWildPanel   11 // Word arg, data[11] and data[12]. NULL while the panel is hidden.
+#define tMapGroup    data[13]
+#define tMapNum      data[14]
+#define tWildMethod  data[15]
 
 // Sprite data, for both object sprites and the cursor
-#define sMapX      data[0]
-#define sMapY      data[1]
-#define sElevation data[2]
+#define sMapX         data[0]
+#define sMapY         data[1]
+#define sElevation    data[2]
+#define sOnMap        data[7] // Set to MAP_SPRITE_TAG, so the wild panel's icons aren't moved with the map
+#define MAP_SPRITE_TAG 0x4D56
 
 extern u8 GetAttributeByMetatileIdAndMapLayout(const struct MapLayout *mapLayout, u16 metatile, u8 attributeType);
 extern const u8 gInitialMovementTypeFacingDirections[];
@@ -195,6 +273,9 @@ extern const u8 sElevationToSubspriteTableNum[];
 
 extern const u8 gText_MapViewer_WarpInfo[];
 extern const u8 gText_MapViewer_DynamicWarp[];
+extern const u8 gText_MapViewer_NoWildMons[];
+extern const u8 gText_MapViewer_ChangePage[];
+extern const u8 gText_MapViewer_Lv[];
 
 static void Task_WaitFadeThenOpenCurrentMapViewer(u8 taskId);
 static void CB2_OpenCurrentMapViewer(void);
@@ -210,6 +291,7 @@ static void MapViewer_RefreshOverlay(u8 taskId);
 static bool8 MapViewer_ShouldShowObject(const struct ObjectEventTemplate *template);
 static void MapViewer_CreateObjectSprites(const struct MapHeader *header);
 static void MapViewer_UpdateSprites(s16 scrollX, s16 scrollY);
+static bool8 MapViewer_HandleWildPanel(u8 taskId);
 
 void ShowCurrentMapViewer(void)
 {
@@ -229,12 +311,19 @@ static void Task_WaitFadeThenOpenCurrentMapViewer(u8 taskId)
 
 static void CB2_OpenCurrentMapViewer(void)
 {
-    OpenMapViewer(&gMapHeader, CB2_ReturnToFieldContinueScript);
+    OpenMapViewer(gSaveBlock1Ptr->location.mapGroup, gSaveBlock1Ptr->location.mapNum, CB2_ReturnToFieldContinueScript);
 }
 
-void OpenMapViewer(const struct MapHeader *header, MainCallback returnCallback)
+void OpenMapViewer(u8 mapGroup, u8 mapNum, MainCallback returnCallback)
 {
     u8 taskId;
+    const struct MapHeader *header = Overworld_GetMapHeaderByGroupAndId(mapGroup, mapNum);
+
+    if (header == NULL || header->mapLayout == NULL)
+    {
+        SetMainCallback2(returnCallback);
+        return;
+    }
 
     SetVBlankCallback(NULL);
     SetHBlankCallback(NULL);
@@ -248,6 +337,10 @@ void OpenMapViewer(const struct MapHeader *header, MainCallback returnCallback)
     taskId = CreateTask(Task_MapViewerInit, 0);
     SetWordTaskArg(taskId, tHeader, (u32)header);
     SetWordTaskArg(taskId, tCallback, (u32)returnCallback);
+    SetWordTaskArg(taskId, tWildPanel, (u32)NULL);
+    gTasks[taskId].tMapGroup = mapGroup;
+    gTasks[taskId].tMapNum = mapNum;
+    gTasks[taskId].tWildMethod = WILD_METHOD_LAND;
     SetMainCallback2(CB2_MapViewer);
 }
 
@@ -359,6 +452,7 @@ static void Task_MapViewerLoadMap(u8 taskId)
         LoadSpriteSheet(&sCursorSpriteSheet);
         LoadSpritePalette(&sCursorSpritePalette);
         tCursorSprite = CreateSprite(&sCursorSpriteTemplate, 0, 0, 0);
+        gSprites[tCursorSprite].sOnMap = MAP_SPRITE_TAG;
         MapViewer_RefreshOverlay(taskId); // Also positions the cursor
         MapViewer_UpdateSprites(tScrollX, tScrollY);
         BlendPalettes(PALETTES_ALL, 16, RGB_BLACK);
@@ -416,6 +510,8 @@ static bool8 MapViewer_TryFollowWarp(u8 taskId, const struct WarpEvent *warp)
     }
 
     SetWordTaskArg(taskId, tHeader, (u32)destHeader);
+    gTasks[taskId].tMapGroup = warp->mapGroup;
+    gTasks[taskId].tMapNum = warp->mapNum;
     MapViewer_SetCursor(taskId, x, y);
     PlaySE(SE_WARP_IN);
     BeginNormalPaletteFade(PALETTES_ALL, 0, 0, 16, RGB_BLACK);
@@ -600,6 +696,8 @@ static void MapViewer_RefreshOverlay(u8 taskId)
             SetGpuReg(REG_OFFSET_WIN0V, WIN_RANGE(DISPLAY_HEIGHT - INFO_WINDOW_HEIGHT * 8, DISPLAY_HEIGHT));
         }
         MapViewer_PrintWarpInfo(tInfoWindow, warp);
+        SetGpuReg(REG_OFFSET_WIN0H, WIN_RANGE(0, DISPLAY_WIDTH));
+        SetGpuReg(REG_OFFSET_WININ, WININ_WIN0_BG_ALL); // No sprites over the box
         SetGpuRegBits(REG_OFFSET_DISPCNT, DISPCNT_WIN0_ON);
     }
 
@@ -663,6 +761,7 @@ static void MapViewer_CreateObjectSprite(const struct ObjectEventTemplate *templ
     sprite->sMapX = template->x;
     sprite->sMapY = template->y;
     sprite->sElevation = elevation;
+    sprite->sOnMap = MAP_SPRITE_TAG;
 }
 
 static void MapViewer_CreateObjectSprites(const struct MapHeader *header)
@@ -691,7 +790,7 @@ static void MapViewer_UpdateSprites(s16 scrollX, s16 scrollY)
     {
         struct Sprite *sprite = &gSprites[i];
 
-        if (!sprite->inUse)
+        if (!sprite->inUse || sprite->sOnMap != MAP_SPRITE_TAG)
             continue;
 
         // Bottom of the sprite sits on the bottom of its metatile, as in the field
@@ -702,6 +801,215 @@ static void MapViewer_UpdateSprites(s16 scrollX, s16 scrollY)
                           || sprite->y < -32 || sprite->y > DISPLAY_HEIGHT + 32);
         SetObjectSubpriorityByElevation(sprite->sElevation, sprite, 1);
     }
+}
+
+static const struct WildPokemonHeader *MapViewer_GetWildHeader(u8 mapGroup, u8 mapNum)
+{
+    u16 i;
+
+    for (i = 0; gWildMonHeaders[i].mapGroup != MAP_UNDEFINED_GROUP; i++)
+    {
+        if (gWildMonHeaders[i].mapGroup == mapGroup && gWildMonHeaders[i].mapNum == mapNum)
+            return &gWildMonHeaders[i];
+    }
+    return NULL;
+}
+
+static const struct WildPokemonInfo *MapViewer_GetWildInfo(const struct WildPokemonHeader *wild, u8 method)
+{
+    if (wild == NULL)
+        return NULL;
+
+    switch (method)
+    {
+    case WILD_METHOD_LAND:
+        return wild->landMonsInfo;
+    case WILD_METHOD_WATER:
+        return wild->waterMonsInfo;
+    case WILD_METHOD_ROCK_SMASH:
+        return wild->rockSmashMonsInfo;
+    default: // The rods
+        return wild->fishingMonsInfo;
+    }
+}
+
+// Moves tWildMethod to the nearest method this map has, in the given direction.
+// A direction of 0 keeps the current method if the map has it.
+static bool8 MapViewer_SelectWildMethod(u8 taskId, s8 direction)
+{
+    s16 *data = gTasks[taskId].data;
+    const struct WildPokemonHeader *wild = MapViewer_GetWildHeader(tMapGroup, tMapNum);
+    s8 step = (direction < 0) ? -1 : 1;
+    s16 method = tWildMethod;
+    u8 i;
+
+    if (direction != 0)
+        method += step;
+
+    for (i = 0; i < WILD_METHOD_COUNT; i++, method += step)
+    {
+        method = (method + WILD_METHOD_COUNT) % WILD_METHOD_COUNT;
+        if (MapViewer_GetWildInfo(wild, method) != NULL)
+        {
+            tWildMethod = method;
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
+static u8 MapViewer_CountWildMethods(u8 taskId)
+{
+    s16 *data = gTasks[taskId].data;
+    const struct WildPokemonHeader *wild = MapViewer_GetWildHeader(tMapGroup, tMapNum);
+    u8 i, count = 0;
+
+    for (i = 0; i < WILD_METHOD_COUNT; i++)
+    {
+        if (MapViewer_GetWildInfo(wild, i) != NULL)
+            count++;
+    }
+    return count;
+}
+
+static void MapViewer_DestroyWildIcons(struct WildPanel *panel)
+{
+    u8 i;
+
+    for (i = 0; i < panel->numIcons; i++)
+        DestroyMonIcon(&gSprites[panel->iconSpriteIds[i]]);
+    panel->numIcons = 0;
+    FreeMonIconPalettes();
+}
+
+// Prints one cell: the slot's icon, then its level range and chance to its right
+static void MapViewer_DrawWildSlot(struct WildPanel *panel, u8 cell, const struct WildPokemon *mon, u8 rate)
+{
+    u8 spriteId;
+    u8 *str;
+    u8 x = (cell % WILD_PANEL_COLUMNS) * WILD_PANEL_CELL_W;
+    u8 y = WILD_PANEL_HEADER_H + (cell / WILD_PANEL_COLUMNS) * WILD_PANEL_CELL_H;
+
+    str = StringCopy(gStringVar4, gText_MapViewer_Lv);
+    str = ConvertIntToDecimalStringN(str, mon->minLevel, STR_CONV_MODE_LEFT_ALIGN, 3);
+    if (mon->maxLevel != mon->minLevel)
+    {
+        *str++ = CHAR_HYPHEN;
+        ConvertIntToDecimalStringN(str, mon->maxLevel, STR_CONV_MODE_LEFT_ALIGN, 3);
+    }
+    AddTextPrinterParameterized3(WIN_WILD_PANEL, FONT_SMALL, x + 36, y + 4, sWildPanelHeaderColors, 0, gStringVar4);
+
+    str = ConvertIntToDecimalStringN(gStringVar4, rate, STR_CONV_MODE_LEFT_ALIGN, 3);
+    *str++ = CHAR_PERCENT;
+    *str = EOS;
+    AddTextPrinterParameterized3(WIN_WILD_PANEL, FONT_SMALL, x + 36, y + 18, sWildPanelHeaderColors, 0, gStringVar4);
+
+    LoadMonIconPalette(mon->species);
+    spriteId = CreateMonIcon(mon->species, SpriteCB_MonIcon, x + 18, y + 18, 0, 0, FALSE);
+    if (spriteId != MAX_SPRITES)
+    {
+        gSprites[spriteId].oam.priority = 0; // In front of the panel
+        panel->iconSpriteIds[panel->numIcons++] = spriteId;
+    }
+}
+
+static void MapViewer_DrawWildPanel(u8 taskId)
+{
+    s16 *data = gTasks[taskId].data;
+    struct WildPanel *panel = (struct WildPanel *)GetWordTaskArg(taskId, tWildPanel);
+    const struct WildPokemonHeader *wild = MapViewer_GetWildHeader(tMapGroup, tMapNum);
+    u8 i;
+
+    MapViewer_DestroyWildIcons(panel);
+    FillWindowPixelBuffer(WIN_WILD_PANEL, PIXEL_FILL(1));
+
+    if (!MapViewer_SelectWildMethod(taskId, 0))
+    {
+        AddTextPrinterParameterized3(WIN_WILD_PANEL, FONT_NORMAL, 4, 1, sWildPanelHeaderColors, 0, gText_MapViewer_NoWildMons);
+    }
+    else
+    {
+        const struct WildMethod *method = &sWildMethods[tWildMethod];
+        const struct WildPokemonInfo *info = MapViewer_GetWildInfo(wild, tWildMethod);
+
+        AddTextPrinterParameterized3(WIN_WILD_PANEL, FONT_NORMAL, 4, 1, sWildPanelHeaderColors, 0, method->name);
+        if (MapViewer_CountWildMethods(taskId) > 1)
+            AddTextPrinterParameterized3(WIN_WILD_PANEL, FONT_NORMAL,
+                                         DISPLAY_WIDTH - 4 - GetStringWidth(FONT_NORMAL, gText_MapViewer_ChangePage, 0), 1,
+                                         sWildPanelHeaderColors, 0, gText_MapViewer_ChangePage);
+
+        // Every slot is shown separately, even when several have the same species
+        for (i = 0; i < method->numSlots; i++)
+            MapViewer_DrawWildSlot(panel, i, &info->wildPokemon[method->firstSlot + i], method->slotRates[i]);
+    }
+
+    PutWindowTilemap(WIN_WILD_PANEL);
+    CopyWindowToVram(WIN_WILD_PANEL, COPYWIN_FULL);
+}
+
+static void MapViewer_ShowWildPanel(u8 taskId)
+{
+    s16 *data = gTasks[taskId].data;
+    struct WildPanel *panel = AllocZeroed(sizeof(struct WildPanel));
+
+    if (panel == NULL)
+        return;
+
+    SetWordTaskArg(taskId, tWildPanel, (u32)panel);
+    gSprites[tCursorSprite].invisible = TRUE;
+
+    // Window 0 covers the whole screen: only the (unblended) panel and the icons in front of it are shown
+    SetGpuReg(REG_OFFSET_WIN0H, WIN_RANGE(0, DISPLAY_WIDTH));
+    SetGpuReg(REG_OFFSET_WIN0V, WIN_RANGE(0, DISPLAY_HEIGHT));
+    SetGpuReg(REG_OFFSET_WININ, WININ_WIN0_BG0 | WININ_WIN0_OBJ);
+    SetGpuRegBits(REG_OFFSET_DISPCNT, DISPCNT_WIN0_ON);
+
+    MapViewer_DrawWildPanel(taskId);
+}
+
+static void MapViewer_HideWildPanel(u8 taskId)
+{
+    s16 *data = gTasks[taskId].data;
+    struct WildPanel *panel = (struct WildPanel *)GetWordTaskArg(taskId, tWildPanel);
+
+    MapViewer_DestroyWildIcons(panel);
+    Free(panel);
+    SetWordTaskArg(taskId, tWildPanel, (u32)NULL);
+
+    MapViewer_RefreshOverlay(taskId); // Clears the panel, and puts back the highlights, info box and window 0
+    MapViewer_UpdateSprites(tScrollX, tScrollY); // Shows the cursor again
+}
+
+// The panel is up for as long as L is held. Returns TRUE while it's up, so other input is ignored.
+static bool8 MapViewer_HandleWildPanel(u8 taskId)
+{
+    s16 *data = gTasks[taskId].data;
+    bool8 shown = (GetWordTaskArg(taskId, tWildPanel) != 0);
+
+    // Raw, so it works the same with the "L=A" button mode
+    if (JOY_HELD_RAW(L_BUTTON))
+    {
+        if (!shown)
+        {
+            MapViewer_ShowWildPanel(taskId);
+        }
+        else if (JOY_NEW(DPAD_LEFT) || JOY_NEW(DPAD_RIGHT))
+        {
+            s16 oldMethod = tWildMethod;
+
+            MapViewer_SelectWildMethod(taskId, JOY_NEW(DPAD_LEFT) ? -1 : 1);
+            if (tWildMethod != oldMethod)
+            {
+                PlaySE(SE_SELECT);
+                MapViewer_DrawWildPanel(taskId);
+            }
+        }
+        return TRUE;
+    }
+
+    if (shown)
+        MapViewer_HideWildPanel(taskId);
+    return FALSE;
 }
 
 static void Task_MapViewer(u8 taskId)
@@ -715,6 +1023,9 @@ static void Task_MapViewer(u8 taskId)
     s16 scrollY = tScrollY;
 
     if (gPaletteFade.active)
+        return;
+
+    if (MapViewer_HandleWildPanel(taskId))
         return;
 
     if (JOY_NEW(B_BUTTON))

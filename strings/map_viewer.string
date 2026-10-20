@@ -3,3 +3,30 @@
 
 #org @gText_MapViewer_DynamicWarp
 Dynamic warp\n(returns to the previous map)
+
+#org @gText_MapViewer_NoWildMons
+No wild POKéMON here.
+
+#org @gText_MapViewer_ChangePage
+[DPAD_LEFT_RIGHT] Change
+
+#org @gText_MapViewer_Lv
+Lv
+
+#org @gText_MapViewer_Land
+Grass/Cave
+
+#org @gText_MapViewer_Water
+Surfing
+
+#org @gText_MapViewer_RockSmash
+Rock Smash
+
+#org @gText_MapViewer_OldRod
+Old Rod
+
+#org @gText_MapViewer_GoodRod
+Good Rod
+
+#org @gText_MapViewer_SuperRod
+Super Rod
