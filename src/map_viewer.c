@@ -13,6 +13,7 @@
 #include "../include/constants/songs.h"
 #include "../include/constants/rgb.h"
 #include "../include/constants/event_object_movement.h"
+#include "../include/constants/trainer_types.h"
 
 // From constants/event_objects.h, which can't be included here (needs generated map_event_ids.h)
 #define OBJ_EVENT_GFX_VARS 240
@@ -30,9 +31,33 @@
 #define BG_TOP    1
 #define BG_MIDDLE 2
 #define BG_BOTTOM 3
+// Translucent highlights over everything. Uses the free char block 2 and map base 28.
+#define BG_HIGHLIGHT 0
+
+#define HIGHLIGHT_TILE 1 // Tile 0 is left blank (transparent)
+#define PALSLOT_HIGHLIGHT_WARP    13 // The tilesets only use palettes 0-12
+#define PALSLOT_HIGHLIGHT_TRAINER 14
+
+static const u32 sHighlightTile[8] =
+{
+    0x11111111, 0x11111111, 0x11111111, 0x11111111,
+    0x11111111, 0x11111111, 0x11111111, 0x11111111,
+};
+
+static const u16 sHighlightWarpColor = RGB(31, 31, 0);
+static const u16 sHighlightTrainerColor = RGB(31, 0, 0);
 
 static const struct BgTemplate sMapViewerBgTemplates[] =
 {
+    {
+        .bg = BG_HIGHLIGHT,
+        .charBaseIndex = 2,
+        .mapBaseIndex = 28,
+        .screenSize = 0,
+        .paletteMode = 0,
+        .priority = 0,
+        .baseTile = 0,
+    },
     {
         .bg = BG_TOP,
         .charBaseIndex = 0,
@@ -86,7 +111,8 @@ static void VBlankCB_MapViewer(void);
 static void Task_MapViewerInit(u8 taskId);
 static void Task_MapViewer(u8 taskId);
 static void Task_MapViewerExit(u8 taskId);
-static void MapViewer_Redraw(const struct MapLayout *layout, s16 scrollX, s16 scrollY);
+static void MapViewer_Redraw(const struct MapHeader *header, s16 scrollX, s16 scrollY);
+static bool8 MapViewer_ShouldShowObject(const struct ObjectEventTemplate *template);
 static void MapViewer_CreateObjectSprites(const struct MapHeader *header);
 static void MapViewer_UpdateObjectSprites(s16 scrollX, s16 scrollY);
 
@@ -163,6 +189,9 @@ static void Task_MapViewerInit(u8 taskId)
         SetBgTilemapBuffer(BG_TOP, AllocZeroed(MAP_VIEWER_TILEMAP_SIZE));
         SetBgTilemapBuffer(BG_MIDDLE, AllocZeroed(MAP_VIEWER_TILEMAP_SIZE));
         SetBgTilemapBuffer(BG_BOTTOM, AllocZeroed(MAP_VIEWER_TILEMAP_SIZE));
+        SetBgTilemapBuffer(BG_HIGHLIGHT, AllocZeroed(MAP_VIEWER_TILEMAP_SIZE));
+        ChangeBgX(BG_HIGHLIGHT, 0, BG_COORD_SET);
+        ChangeBgY(BG_HIGHLIGHT, 0, BG_COORD_SET);
         ChangeBgX(BG_TOP, 0, BG_COORD_SET);
         ChangeBgY(BG_TOP, 0, BG_COORD_SET);
         ChangeBgX(BG_MIDDLE, 0, BG_COORD_SET);
@@ -175,12 +204,15 @@ static void Task_MapViewerInit(u8 taskId)
     case 1:
         CopyMapTilesetsToVram(layout);
         LoadMapTilesetPalettes(layout);
+        LoadBgTiles(BG_HIGHLIGHT, sHighlightTile, sizeof(sHighlightTile), HIGHLIGHT_TILE);
+        LoadPalette(&sHighlightWarpColor, BG_PLTT_ID(PALSLOT_HIGHLIGHT_WARP) + 1, sizeof(u16));
+        LoadPalette(&sHighlightTrainerColor, BG_PLTT_ID(PALSLOT_HIGHLIGHT_TRAINER) + 1, sizeof(u16));
         tState++;
         break;
     case 2:
         tScrollX = 0; // Start at the top left corner
         tScrollY = 0;
-        MapViewer_Redraw(layout, tScrollX, tScrollY);
+        MapViewer_Redraw(header, tScrollX, tScrollY);
         tState++;
         break;
     case 3:
@@ -192,6 +224,11 @@ static void Task_MapViewerInit(u8 taskId)
         if (IsDma3ManagerBusyWithBgCopy())
             break;
         SetGpuReg(REG_OFFSET_DISPCNT, DISPCNT_MODE_0 | DISPCNT_OBJ_ON | DISPCNT_OBJ_1D_MAP);
+        // Highlights are blended half and half with the map and sprites under them
+        SetGpuReg(REG_OFFSET_BLDCNT, BLDCNT_TGT1_BG0 | BLDCNT_EFFECT_BLEND
+                                   | BLDCNT_TGT2_BG1 | BLDCNT_TGT2_BG2 | BLDCNT_TGT2_BG3 | BLDCNT_TGT2_OBJ);
+        SetGpuReg(REG_OFFSET_BLDALPHA, BLDALPHA_BLEND(8, 8));
+        ShowBg(BG_HIGHLIGHT);
         ShowBg(BG_TOP);
         ShowBg(BG_MIDDLE);
         ShowBg(BG_BOTTOM);
@@ -233,9 +270,55 @@ static void DrawMetatile(u8 layerType, const u16 *tiles, u16 offset)
     }
 }
 
-static void MapViewer_Redraw(const struct MapLayout *layout, s16 scrollX, s16 scrollY)
+static void MapViewer_DrawHighlight(s16 mapX, s16 mapY, s16 scrollX, s16 scrollY, u8 palSlot)
+{
+    u16 *tilemap = GetBgTilemapBuffer(BG_HIGHLIGHT);
+    u16 tile = HIGHLIGHT_TILE | (palSlot << 12);
+    s16 x = mapX - scrollX;
+    s16 y = mapY - scrollY;
+    u16 offset;
+
+    if (x < 0 || y < 0 || x >= MAP_VIEWER_WIDTH || y >= MAP_VIEWER_HEIGHT)
+        return;
+
+    offset = y * 2 * 32 + x * 2;
+    tilemap[offset] = tile;
+    tilemap[offset + 1] = tile;
+    tilemap[offset + 32] = tile;
+    tilemap[offset + 33] = tile;
+}
+
+// Warps in yellow, trainers in red
+static void MapViewer_DrawHighlights(const struct MapHeader *header, s16 scrollX, s16 scrollY)
+{
+    u8 i;
+    const struct MapEvents *events = header->events;
+
+    CpuFill16(0, GetBgTilemapBuffer(BG_HIGHLIGHT), MAP_VIEWER_TILEMAP_SIZE);
+
+    if (events != NULL)
+    {
+        for (i = 0; i < events->warpCount; i++)
+            MapViewer_DrawHighlight(events->warps[i].x, events->warps[i].y, scrollX, scrollY, PALSLOT_HIGHLIGHT_WARP);
+
+        for (i = 0; i < events->objectEventCount; i++)
+        {
+            const struct ObjectEventTemplate *template = &events->objectEvents[i];
+
+            if (template->objUnion.normal.trainerType != TRAINER_TYPE_NONE && MapViewer_ShouldShowObject(template))
+                MapViewer_DrawHighlight(template->x, template->y, scrollX, scrollY, PALSLOT_HIGHLIGHT_TRAINER);
+        }
+    }
+
+    ScheduleBgCopyTilemapToVram(BG_HIGHLIGHT);
+}
+
+static void MapViewer_Redraw(const struct MapHeader *header, s16 scrollX, s16 scrollY)
 {
     s16 x, y;
+    const struct MapLayout *layout = header->mapLayout;
+
+    MapViewer_DrawHighlights(header, scrollX, scrollY);
 
     CpuFill16(0, GetBgTilemapBuffer(BG_TOP), MAP_VIEWER_TILEMAP_SIZE);
     CpuFill16(0, GetBgTilemapBuffer(BG_MIDDLE), MAP_VIEWER_TILEMAP_SIZE);
@@ -398,7 +481,7 @@ static void Task_MapViewer(u8 taskId)
     {
         tScrollX = scrollX;
         tScrollY = scrollY;
-        MapViewer_Redraw(layout, scrollX, scrollY);
+        MapViewer_Redraw(header, scrollX, scrollY);
         MapViewer_UpdateObjectSprites(scrollX, scrollY);
     }
 }
@@ -411,12 +494,16 @@ static void Task_MapViewerExit(u8 taskId)
         return;
 
     returnCallback = (MainCallback)GetWordTaskArg(taskId, tCallback);
+    Free(GetBgTilemapBuffer(BG_HIGHLIGHT));
     Free(GetBgTilemapBuffer(BG_TOP));
     Free(GetBgTilemapBuffer(BG_MIDDLE));
     Free(GetBgTilemapBuffer(BG_BOTTOM));
+    SetBgTilemapBuffer(BG_HIGHLIGHT, NULL);
     SetBgTilemapBuffer(BG_TOP, NULL);
     SetBgTilemapBuffer(BG_MIDDLE, NULL);
     SetBgTilemapBuffer(BG_BOTTOM, NULL);
+    SetGpuReg(REG_OFFSET_BLDCNT, 0);
+    SetGpuReg(REG_OFFSET_BLDALPHA, 0);
     DestroyTask(taskId);
     SetVBlankCallback(NULL);
     SetMainCallback2(returnCallback);
