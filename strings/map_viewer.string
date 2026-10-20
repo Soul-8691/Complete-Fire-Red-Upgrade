@@ -1,0 +1,5 @@
+#org @gText_MapViewer_WarpInfo
+[BUFFER1]\nGroup [BUFFER2]   Num [BUFFER3]
+
+#org @gText_MapViewer_DynamicWarp
+Dynamic warp\n(returns to the previous map)
