@@ -30,3 +30,21 @@ Good Rod
 
 #org @gText_MapViewer_SuperRod
 Super Rod
+
+#org @gText_MapViewer_DpadLeftRight
+[DPAD_LEFT_RIGHT]
+
+#org @gText_MapViewer_DpadUpDown
+[DPAD_UP_DOWN]
+
+#org @gText_MapViewer_Double
+Double
+
+#org @gText_MapViewer_IV
+IV
+
+#org @gText_MapViewer_NoItem
+No item
+
+#org @gText_MapViewer_NoMove
+-

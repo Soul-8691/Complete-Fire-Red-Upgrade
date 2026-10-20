@@ -14,11 +14,20 @@
 #include "../include/wild_encounter.h"
 #include "../include/pokemon_icon.h"
 #include "../include/characters.h"
+#include "../include/battle.h"
+#include "../include/data.h"
+#include "../include/item.h"
+#include "../include/pokemon.h"
 #include "../include/map_viewer.h"
 #include "../include/constants/songs.h"
 #include "../include/constants/rgb.h"
 #include "../include/constants/event_object_movement.h"
 #include "../include/constants/trainer_types.h"
+#include "../include/constants/trainers.h"
+#include "../include/constants/battle_setup.h"
+#include "../include/constants/map_scripts.h"
+#include "../include/constants/items.h"
+#include "../include/constants/moves.h"
 
 // From constants/event_objects.h and constants/maps.h, which can't be included here
 // (they need the generated map_event_ids.h and map_groups.h)
@@ -27,6 +36,8 @@
 #define MAP_DYNAMIC_GROUP  0x7F // MAP_DYNAMIC: a warp back to wherever the player came from
 #define MAP_DYNAMIC_NUM    0x7F
 #define MAP_UNDEFINED_GROUP 0xFF // Ends gWildMonHeaders
+// Where FireRed keeps the rival's name. CFRU's struct SaveBlock1 doesn't match the ROM's layout here.
+#define SAVEBLOCK1_RIVAL_NAME_OFFSET 0x3A4C
 
 // Viewer that draws a map's layout and object events (as seen in a map editor).
 // D-Pad moves the cursor (the view follows it), B fades out and switches to the return callback.
@@ -51,20 +62,23 @@
 #define PALSLOT_HIGHLIGHT_TRAINER 14
 #define PALSLOT_INFO_TEXT         15
 
-static const u32 sHighlightTile[8] =
+// Everything handed to the ROM's own functions is ALIGNED(4): the ROM was built with agbcc, which aligns
+// every struct to 4 bytes and copies them a word at a time, but this compiler only aligns them to their
+// largest member. A template that lands on a 2-byte boundary gets read as garbage.
+static const u32 ALIGNED(4) sHighlightTile[8] =
 {
     0x11111111, 0x11111111, 0x11111111, 0x11111111,
     0x11111111, 0x11111111, 0x11111111, 0x11111111,
 };
 
-static const u16 sHighlightWarpColor = RGB(31, 31, 0);
-static const u16 sHighlightTrainerColor = RGB(31, 0, 0);
+static const u16 ALIGNED(4) sHighlightWarpColor = RGB(31, 31, 0);
+static const u16 ALIGNED(4) sHighlightTrainerColor = RGB(31, 0, 0);
 
 // 0: transparent, 1: box background, 2: text, 3: text shadow
-static const u16 sInfoTextPal[] = {RGB_BLACK, RGB(2, 2, 4), RGB_WHITE, RGB(11, 11, 13)};
+static const u16 ALIGNED(4) sInfoTextPal[] = {RGB_BLACK, RGB(2, 2, 4), RGB_WHITE, RGB(11, 11, 13)};
 static const u8 sInfoTextColors[] = {1, 2, 3};
 
-static const struct BgTemplate sMapViewerBgTemplates[] =
+static const struct BgTemplate ALIGNED(4) sMapViewerBgTemplates[] =
 {
     {
         .bg = BG_OVERLAY,
@@ -109,13 +123,13 @@ enum
 {
     WIN_INFO_TOP,
     WIN_INFO_BOTTOM,
-    WIN_WILD_PANEL, // Full screen. Never shown at the same time as the info box, so it reuses its tiles.
+    WIN_PANEL, // Full screen. Never shown at the same time as the info box, so it reuses its tiles.
     WIN_INFO_NONE = 0xFF,
 };
 
 #define INFO_WINDOW_HEIGHT 4 // In tiles
 
-static const struct WindowTemplate sMapViewerWindowTemplates[] =
+static const struct WindowTemplate ALIGNED(4) sMapViewerWindowTemplates[] =
 {
     [WIN_INFO_TOP] =
     {
@@ -137,7 +151,7 @@ static const struct WindowTemplate sMapViewerWindowTemplates[] =
         .paletteNum = PALSLOT_INFO_TEXT,
         .baseBlock = HIGHLIGHT_TILE + 1 + 30 * INFO_WINDOW_HEIGHT,
     },
-    [WIN_WILD_PANEL] =
+    [WIN_PANEL] =
     {
         .bg = BG_OVERLAY,
         .tilemapLeft = 0,
@@ -198,18 +212,45 @@ static const struct WildMethod sWildMethods[WILD_METHOD_COUNT] =
     [WILD_METHOD_SUPER_ROD]  = {gText_MapViewer_SuperRod,  5, 5,                sFishingSlotRates + 5},
 };
 
-static const u8 sWildPanelHeaderColors[] = {1, 2, 3};
+static const u8 sPanelTextColors[] = {1, 2, 3};
 
-struct WildPanel
+// Trainer party panel (hold R on a trainer): a header line, then a 2x3 grid with one cell per party member
+// Trainer party panel: a header line, then one full width row per party member, 3 per page (Up/Down changes page)
+#define TRAINER_PANEL_ROWS    3
+#define TRAINER_PANEL_ROW_H   48
+#define TRAINER_PANEL_LINE_H  14
+#define TRAINER_PANEL_TEXT_X  36  // Right of the icon
+#define TRAINER_PANEL_MOVE_W  102 // Fits the longest move names
+
+enum
 {
-    u8 iconSpriteIds[WILD_PANEL_MAX_SLOTS];
+    PANEL_NONE,
+    PANEL_WILD,
+    PANEL_TRAINER,
+};
+
+#define MAX_VIEWER_OBJECTS      64 // OBJECT_EVENT_TEMPLATES_COUNT
+#define MAX_TRAINERS_PER_OBJECT 8  // e.g. the Champion has one team per starter, plus rematches
+#define MAX_PANEL_ICONS         WILD_PANEL_MAX_SLOTS // More than PARTY_SIZE
+
+// Kept for as long as the viewer is open
+struct MapViewerExtra
+{
+    u8 panel; // PANEL_*
     u8 numIcons;
+    u8 iconSpriteIds[MAX_PANEL_ICONS];
+    u8 trainerObject; // Object whose party is shown
+    u8 trainerPage;   // Which of that object's trainer IDs is shown
+    u8 trainerPartyPage; // Which TRAINER_PANEL_ROWS of the party are shown
+    // Trainer IDs each object can battle with, found from the scripts when the map is loaded
+    u8 numObjectTrainers[MAX_VIEWER_OBJECTS];
+    u16 objectTrainers[MAX_VIEWER_OBJECTS][MAX_TRAINERS_PER_OBJECT];
 };
 
 // Cursor: 16x16 square outline, black outside and white inside so it shows up on anything
 #define TAG_CURSOR 0x4D56
 
-static const u32 sCursorGfx[] =
+static const u32 ALIGNED(4) sCursorGfx[] =
 {
     // Top left
     0x22222222, 0x11111112, 0x00000012, 0x00000012, 0x00000012, 0x00000012, 0x00000012, 0x00000012,
@@ -221,19 +262,19 @@ static const u32 sCursorGfx[] =
     0x21000000, 0x21000000, 0x21000000, 0x21000000, 0x21000000, 0x21000000, 0x21111111, 0x22222222,
 };
 
-static const u16 sCursorPal[16] = {RGB_BLACK, RGB_WHITE, RGB_BLACK};
+static const u16 ALIGNED(4) sCursorPal[16] = {RGB_BLACK, RGB_WHITE, RGB_BLACK};
 
-static const struct SpriteSheet sCursorSpriteSheet = {sCursorGfx, sizeof(sCursorGfx), TAG_CURSOR};
-static const struct SpritePalette sCursorSpritePalette = {sCursorPal, TAG_CURSOR};
+static const struct SpriteSheet ALIGNED(4) sCursorSpriteSheet = {sCursorGfx, sizeof(sCursorGfx), TAG_CURSOR};
+static const struct SpritePalette ALIGNED(4) sCursorSpritePalette = {sCursorPal, TAG_CURSOR};
 
-static const struct OamData sCursorOamData =
+static const struct OamData ALIGNED(4) sCursorOamData =
 {
     .shape = SPRITE_SHAPE(16x16),
     .size = SPRITE_SIZE(16x16),
     .priority = 0, // In front of all object sprites
 };
 
-static const struct SpriteTemplate sCursorSpriteTemplate =
+static const struct SpriteTemplate ALIGNED(4) sCursorSpriteTemplate =
 {
     .tileTag = TAG_CURSOR,
     .paletteTag = TAG_CURSOR,
@@ -254,7 +295,7 @@ static const struct SpriteTemplate sCursorSpriteTemplate =
 #define tCursorY     data[8]
 #define tCursorSprite data[9]
 #define tInfoWindow  data[10]
-#define tWildPanel   11 // Word arg, data[11] and data[12]. NULL while the panel is hidden.
+#define tExtra       11 // Word arg, data[11] and data[12]: struct MapViewerExtra
 #define tMapGroup    data[13]
 #define tMapNum      data[14]
 #define tWildMethod  data[15]
@@ -276,6 +317,12 @@ extern const u8 gText_MapViewer_DynamicWarp[];
 extern const u8 gText_MapViewer_NoWildMons[];
 extern const u8 gText_MapViewer_ChangePage[];
 extern const u8 gText_MapViewer_Lv[];
+extern const u8 gText_MapViewer_DpadLeftRight[];
+extern const u8 gText_MapViewer_DpadUpDown[];
+extern const u8 gText_MapViewer_Double[];
+extern const u8 gText_MapViewer_IV[];
+extern const u8 gText_MapViewer_NoItem[];
+extern const u8 gText_MapViewer_NoMove[];
 
 static void Task_WaitFadeThenOpenCurrentMapViewer(u8 taskId);
 static void CB2_OpenCurrentMapViewer(void);
@@ -291,7 +338,9 @@ static void MapViewer_RefreshOverlay(u8 taskId);
 static bool8 MapViewer_ShouldShowObject(const struct ObjectEventTemplate *template);
 static void MapViewer_CreateObjectSprites(const struct MapHeader *header);
 static void MapViewer_UpdateSprites(s16 scrollX, s16 scrollY);
-static bool8 MapViewer_HandleWildPanel(u8 taskId);
+static bool8 MapViewer_HandlePanels(u8 taskId);
+static void MapViewer_FindObjectTrainers(u8 taskId);
+static bool8 MapViewer_IsTrainerObject(const struct MapViewerExtra *extra, const struct ObjectEventTemplate *objects, u8 i);
 
 void ShowCurrentMapViewer(void)
 {
@@ -337,7 +386,7 @@ void OpenMapViewer(u8 mapGroup, u8 mapNum, MainCallback returnCallback)
     taskId = CreateTask(Task_MapViewerInit, 0);
     SetWordTaskArg(taskId, tHeader, (u32)header);
     SetWordTaskArg(taskId, tCallback, (u32)returnCallback);
-    SetWordTaskArg(taskId, tWildPanel, (u32)NULL);
+    SetWordTaskArg(taskId, tExtra, (u32)AllocZeroed(sizeof(struct MapViewerExtra))); // Freed in Task_MapViewerExit
     gTasks[taskId].tMapGroup = mapGroup;
     gTasks[taskId].tMapNum = mapNum;
     gTasks[taskId].tWildMethod = WILD_METHOD_LAND;
@@ -453,6 +502,7 @@ static void Task_MapViewerLoadMap(u8 taskId)
         LoadSpritePalette(&sCursorSpritePalette);
         tCursorSprite = CreateSprite(&sCursorSpriteTemplate, 0, 0, 0);
         gSprites[tCursorSprite].sOnMap = MAP_SPRITE_TAG;
+        MapViewer_FindObjectTrainers(taskId);
         MapViewer_RefreshOverlay(taskId); // Also positions the cursor
         MapViewer_UpdateSprites(tScrollX, tScrollY);
         BlendPalettes(PALETTES_ALL, 16, RGB_BLACK);
@@ -606,7 +656,7 @@ static void MapViewer_DrawHighlight(s16 mapX, s16 mapY, s16 scrollX, s16 scrollY
 }
 
 // Warps in yellow, trainers in red
-static void MapViewer_DrawHighlights(const struct MapHeader *header, s16 scrollX, s16 scrollY)
+static void MapViewer_DrawHighlights(const struct MapHeader *header, const struct MapViewerExtra *extra, s16 scrollX, s16 scrollY)
 {
     u8 i;
     const struct MapEvents *events = header->events;
@@ -623,7 +673,7 @@ static void MapViewer_DrawHighlights(const struct MapHeader *header, s16 scrollX
     {
         const struct ObjectEventTemplate *template = &events->objectEvents[i];
 
-        if (template->objUnion.normal.trainerType != TRAINER_TYPE_NONE && MapViewer_ShouldShowObject(template))
+        if (MapViewer_ShouldShowObject(template) && MapViewer_IsTrainerObject(extra, events->objectEvents, i))
             MapViewer_DrawHighlight(template->x, template->y, scrollX, scrollY, PALSLOT_HIGHLIGHT_TRAINER);
     }
 }
@@ -676,7 +726,7 @@ static void MapViewer_RefreshOverlay(u8 taskId)
     const struct MapHeader *header = (const struct MapHeader *)GetWordTaskArg(taskId, tHeader);
     const struct WarpEvent *warp = MapViewer_GetWarpAt(header, tCursorX, tCursorY);
 
-    MapViewer_DrawHighlights(header, tScrollX, tScrollY);
+    MapViewer_DrawHighlights(header, (struct MapViewerExtra *)GetWordTaskArg(taskId, tExtra), tScrollX, tScrollY);
 
     if (warp == NULL)
     {
@@ -872,20 +922,479 @@ static u8 MapViewer_CountWildMethods(u8 taskId)
     return count;
 }
 
-static void MapViewer_DestroyWildIcons(struct WildPanel *panel)
+// --- Finding trainers from scripts ---
+
+// Length in bytes of each FireRed script command, from the macros in asm/macros/event.inc
+static const u8 sScriptCmdLengths[] =
+{
+    [0x00] =  1, // nop
+    [0x01] =  1, // nop1
+    [0x02] =  1, // end
+    [0x03] =  1, // return
+    [0x04] =  5, // call
+    [0x05] =  5, // goto
+    [0x06] =  6, // goto_if
+    [0x07] =  6, // call_if
+    [0x08] =  2, // gotostd
+    [0x09] =  2, // callstd
+    [0x0A] =  3, // gotostd_if
+    [0x0B] =  3, // callstd_if
+    [0x0C] =  1, // returnram
+    [0x0D] =  1, // endram
+    [0x0E] =  2, // setmysteryeventstatus
+    [0x0F] =  6, // loadword
+    [0x10] =  3, // loadbyte
+    [0x11] =  6, // setptr
+    [0x12] =  6, // loadbytefromptr
+    [0x13] =  6, // setptrbyte
+    [0x14] =  3, // copylocal
+    [0x15] =  9, // copybyte
+    [0x16] =  5, // setvar
+    [0x17] =  5, // addvar
+    [0x18] =  5, // subvar
+    [0x19] =  5, // copyvar
+    [0x1A] =  5, // setorcopyvar
+    [0x1B] =  3, // compare_local_to_local
+    [0x1C] =  3, // compare_local_to_value
+    [0x1D] =  6, // compare_local_to_ptr
+    [0x1E] =  6, // compare_ptr_to_local
+    [0x1F] =  6, // compare_ptr_to_value
+    [0x20] =  9, // compare_ptr_to_ptr
+    [0x21] =  5, // compare_var_to_value
+    [0x22] =  5, // compare_var_to_var
+    [0x23] =  5, // callnative
+    [0x24] =  5, // gotonative
+    [0x25] =  3, // special
+    [0x26] =  5, // specialvar
+    [0x27] =  1, // waitstate
+    [0x28] =  3, // delay
+    [0x29] =  3, // setflag
+    [0x2A] =  3, // clearflag
+    [0x2B] =  3, // checkflag
+    [0x2C] =  5, // initclock
+    [0x2D] =  1, // dotimebasedevents
+    [0x2E] =  1, // gettime
+    [0x2F] =  3, // playse
+    [0x30] =  1, // waitse
+    [0x31] =  3, // playfanfare
+    [0x32] =  1, // waitfanfare
+    [0x33] =  4, // playbgm
+    [0x34] =  3, // savebgm
+    [0x35] =  1, // fadedefaultbgm
+    [0x36] =  3, // fadenewbgm
+    [0x37] =  2, // fadeoutbgm
+    [0x38] =  2, // fadeinbgm
+    [0x39] =  8, // warp
+    [0x3A] =  8, // warpsilent
+    [0x3B] =  8, // warpdoor
+    [0x3C] =  3, // warphole
+    [0x3D] =  8, // warpteleport
+    [0x3E] =  8, // setwarp
+    [0x3F] =  8, // setdynamicwarp
+    [0x40] =  8, // setdivewarp
+    [0x41] =  8, // setholewarp
+    [0x42] =  5, // getplayerxy
+    [0x43] =  1, // getpartysize
+    [0x44] =  5, // additem
+    [0x45] =  5, // removeitem
+    [0x46] =  5, // checkitemspace
+    [0x47] =  5, // checkitem
+    [0x48] =  3, // checkitemtype
+    [0x49] =  5, // addpcitem
+    [0x4A] =  5, // checkpcitem
+    [0x4B] =  3, // adddecoration
+    [0x4C] =  3, // removedecoration
+    [0x4D] =  3, // checkdecor
+    [0x4E] =  3, // checkdecorspace
+    [0x4F] =  7, // applymovement
+    [0x50] =  9, // applymovementat
+    [0x51] =  3, // waitmovement
+    [0x52] =  5, // waitmovementat
+    [0x53] =  3, // removeobject
+    [0x54] =  5, // removeobjectat
+    [0x55] =  3, // addobject
+    [0x56] =  5, // addobjectat
+    [0x57] =  7, // setobjectxy
+    [0x58] =  5, // showobjectat
+    [0x59] =  5, // hideobjectat
+    [0x5A] =  1, // faceplayer
+    [0x5B] =  4, // turnobject
+    [0x5C] =  0, // trainerbattle
+    [0x5D] =  1, // dotrainerbattle
+    [0x5E] =  1, // gotopostbattlescript
+    [0x5F] =  1, // gotobeatenscript
+    [0x60] =  3, // checktrainerflag
+    [0x61] =  3, // settrainerflag
+    [0x62] =  3, // cleartrainerflag
+    [0x63] =  7, // setobjectxyperm
+    [0x64] =  3, // copyobjectxytoperm
+    [0x65] =  4, // setobjectmovementtype
+    [0x66] =  1, // waitmessage
+    [0x67] =  5, // message
+    [0x68] =  1, // closemessage
+    [0x69] =  1, // lockall
+    [0x6A] =  1, // lock
+    [0x6B] =  1, // releaseall
+    [0x6C] =  1, // release
+    [0x6D] =  1, // waitbuttonpress
+    [0x6E] =  3, // yesnobox
+    [0x6F] =  5, // multichoice
+    [0x70] =  6, // multichoicedefault
+    [0x71] =  6, // multichoicegrid
+    [0x72] =  1, // drawbox
+    [0x73] =  5, // erasebox
+    [0x74] =  5, // drawboxtext
+    [0x75] =  5, // showmonpic
+    [0x76] =  1, // hidemonpic
+    [0x77] =  2, // showcontestpainting
+    [0x78] =  5, // braillemessage
+    [0x79] = 15, // givemon
+    [0x7A] =  3, // giveegg
+    [0x7B] =  5, // setmonmove
+    [0x7C] =  3, // checkpartymove
+    [0x7D] =  4, // bufferspeciesname
+    [0x7E] =  2, // bufferleadmonspeciesname
+    [0x7F] =  4, // bufferpartymonnick
+    [0x80] =  4, // bufferitemname
+    [0x81] =  4, // bufferdecorationname
+    [0x82] =  4, // buffermovename
+    [0x83] =  4, // buffernumberstring
+    [0x84] =  4, // bufferstdstring
+    [0x85] =  6, // bufferstring
+    [0x86] =  5, // pokemart
+    [0x87] =  5, // pokemartdecoration
+    [0x88] =  5, // pokemartdecoration2
+    [0x89] =  3, // playslotmachine
+    [0x8A] =  4, // setberrytree
+    [0x8B] =  1, // choosecontestmon
+    [0x8C] =  1, // startcontest
+    [0x8D] =  1, // showcontestresults
+    [0x8E] =  1, // contestlinktransfer
+    [0x8F] =  3, // random
+    [0x90] =  6, // addmoney
+    [0x91] =  6, // removemoney
+    [0x92] =  6, // checkmoney
+    [0x93] =  4, // showmoneybox
+    [0x94] =  3, // hidemoneybox
+    [0x95] =  4, // updatemoneybox
+    [0x96] =  3, // getpokenewsactive
+    [0x97] =  2, // fadescreen
+    [0x98] =  3, // fadescreenspeed
+    [0x99] =  3, // setflashlevel
+    [0x9A] =  2, // animateflash
+    [0x9B] =  5, // messageautoscroll
+    [0x9C] =  3, // dofieldeffect
+    [0x9D] =  4, // setfieldeffectargument
+    [0x9E] =  3, // waitfieldeffect
+    [0x9F] =  3, // setrespawn
+    [0xA0] =  1, // checkplayergender
+    [0xA1] =  5, // playmoncry
+    [0xA2] =  9, // setmetatile
+    [0xA3] =  1, // resetweather
+    [0xA4] =  3, // setweather
+    [0xA5] =  1, // doweather
+    [0xA6] =  2, // setstepcallback
+    [0xA7] =  3, // setmaplayoutindex
+    [0xA8] =  6, // setobjectsubpriority
+    [0xA9] =  5, // resetobjectsubpriority
+    [0xAA] =  9, // createvobject
+    [0xAB] =  3, // turnvobject
+    [0xAC] =  5, // opendoor
+    [0xAD] =  5, // closedoor
+    [0xAE] =  1, // waitdooranim
+    [0xAF] =  5, // setdooropen
+    [0xB0] =  5, // setdoorclosed
+    [0xB1] =  8, // addelevmenuitem
+    [0xB2] =  1, // showelevmenu
+    [0xB3] =  3, // checkcoins
+    [0xB4] =  3, // addcoins
+    [0xB5] =  3, // removecoins
+    [0xB6] =  6, // setwildbattle
+    [0xB7] =  1, // dowildbattle
+    [0xB8] =  5, // setvaddress
+    [0xB9] =  5, // vgoto
+    [0xBA] =  5, // vcall
+    [0xBB] =  6, // vgoto_if
+    [0xBC] =  6, // vcall_if
+    [0xBD] =  5, // vmessage
+    [0xBE] =  5, // vbuffermessage
+    [0xBF] =  6, // vbufferstring
+    [0xC0] =  3, // showcoinsbox
+    [0xC1] =  3, // hidecoinsbox
+    [0xC2] =  3, // updatecoinsbox
+    [0xC3] =  2, // incrementgamestat
+    [0xC4] =  8, // setescapewarp
+    [0xC5] =  1, // waitmoncry
+    [0xC6] =  4, // bufferboxname
+    [0xC7] =  2, // textcolor
+    [0xC8] =  5, // loadhelp
+    [0xC9] =  1, // unloadhelp
+    [0xCA] =  1, // signmsg
+    [0xCB] =  1, // normalmsg
+    [0xCC] =  6, // comparestat
+    [0xCD] =  3, // setmonmodernfatefulencounter
+    [0xCE] =  3, // checkmonmodernfatefulencounter
+    [0xCF] =  1, // trywondercardscript
+    [0xD0] =  3, // setworldmapflag
+    [0xD1] =  8, // warpspinenter
+    [0xD2] =  4, // setmonmetlocation
+    [0xD3] =  5, // getbraillestringwidth
+    [0xD4] =  6, // bufferitemnameplural
+    [0xD5] =  1, // nop
+};
+
+// Bytes after trainerbattle's type, trainer and local ID, for each TRAINER_BATTLE_* type
+static const u8 sTrainerBattleArgsLengths[] =
+{
+    [TRAINER_BATTLE_SINGLE]                          = 8,
+    [TRAINER_BATTLE_CONTINUE_SCRIPT_NO_MUSIC]        = 12,
+    [TRAINER_BATTLE_CONTINUE_SCRIPT]                 = 12,
+    [TRAINER_BATTLE_SINGLE_NO_INTRO_TEXT]            = 4,
+    [TRAINER_BATTLE_DOUBLE]                          = 12,
+    [TRAINER_BATTLE_REMATCH]                         = 8,
+    [TRAINER_BATTLE_CONTINUE_SCRIPT_DOUBLE]          = 16,
+    [TRAINER_BATTLE_REMATCH_DOUBLE]                  = 12,
+    [TRAINER_BATTLE_CONTINUE_SCRIPT_DOUBLE_NO_MUSIC] = 16,
+    [TRAINER_BATTLE_EARLY_RIVAL]                     = 8,
+};
+
+#define IS_ROM_PTR(ptr) ((u32)(ptr) >= 0x08000000 && (u32)(ptr) < 0x0A000000)
+#define SCRIPT_MAX_BRANCHES 32
+#define SCRIPT_MAX_STEPS    1024
+
+static const u8 *ReadScriptPtr(const u8 *ptr)
+{
+    return (const u8 *)(ptr[0] | (ptr[1] << 8) | (ptr[2] << 16) | (ptr[3] << 24));
+}
+
+static void AddTrainerId(u16 *ids, u8 *count, u16 trainerId)
 {
     u8 i;
 
-    for (i = 0; i < panel->numIcons; i++)
-        DestroyMonIcon(&gSprites[panel->iconSpriteIds[i]]);
-    panel->numIcons = 0;
+    for (i = 0; i < *count; i++)
+    {
+        if (ids[i] == trainerId)
+            return;
+    }
+    if (*count < MAX_TRAINERS_PER_OBJECT)
+        ids[(*count)++] = trainerId;
+}
+
+static void AddScriptBranch(const u8 **branches, u8 *numBranches, const u8 *script)
+{
+    u8 i;
+
+    if (!IS_ROM_PTR(script))
+        return;
+    for (i = 0; i < *numBranches; i++)
+    {
+        if (branches[i] == script)
+            return; // Already walked, or about to be
+    }
+    if (*numBranches < SCRIPT_MAX_BRANCHES)
+        branches[(*numBranches)++] = script;
+}
+
+// Walks a script and every script it can goto/call (whatever the conditions), collecting the trainer of every trainerbattle
+static void MapViewer_FindScriptTrainers(const u8 *script, u16 *ids, u8 *count)
+{
+    const u8 *branches[SCRIPT_MAX_BRANCHES];
+    u8 numBranches = 0;
+    u8 nextBranch = 0;
+    u16 steps = 0;
+
+    AddScriptBranch(branches, &numBranches, script);
+
+    while (nextBranch < numBranches)
+    {
+        const u8 *ptr = branches[nextBranch++];
+        bool8 endOfBranch = FALSE;
+
+        while (!endOfBranch && steps++ < SCRIPT_MAX_STEPS)
+        {
+            u8 cmd = ptr[0];
+            u8 length;
+
+            if (cmd >= NELEMS(sScriptCmdLengths))
+                break; // Unknown command (e.g. one a hack added), so its length isn't known
+
+            length = sScriptCmdLengths[cmd];
+            switch (cmd)
+            {
+            case 0x02: // end
+            case 0x03: // return
+            case 0x0C: // returnram
+            case 0x0D: // endram
+                endOfBranch = TRUE;
+                break;
+            case 0x05: // goto
+                AddScriptBranch(branches, &numBranches, ReadScriptPtr(ptr + 1));
+                endOfBranch = TRUE;
+                break;
+            case 0x04: // call
+                AddScriptBranch(branches, &numBranches, ReadScriptPtr(ptr + 1));
+                break;
+            case 0x06: // goto_if
+            case 0x07: // call_if
+                AddScriptBranch(branches, &numBranches, ReadScriptPtr(ptr + 2));
+                break;
+            case 0x5C: // trainerbattle
+            {
+                u8 type = ptr[1];
+
+                if (type >= NELEMS(sTrainerBattleArgsLengths))
+                {
+                    endOfBranch = TRUE;
+                    break;
+                }
+                AddTrainerId(ids, count, ptr[2] | (ptr[3] << 8));
+                length = 6 + sTrainerBattleArgsLengths[type];
+                // These types carry on into another script after the battle
+                if (type == TRAINER_BATTLE_CONTINUE_SCRIPT_NO_MUSIC || type == TRAINER_BATTLE_CONTINUE_SCRIPT
+                 || type == TRAINER_BATTLE_CONTINUE_SCRIPT_DOUBLE || type == TRAINER_BATTLE_CONTINUE_SCRIPT_DOUBLE_NO_MUSIC)
+                    AddScriptBranch(branches, &numBranches, ReadScriptPtr(ptr + length - 4));
+                break;
+            }
+            }
+            ptr += length;
+        }
+    }
+}
+
+// Battles started by the map itself (map scripts and coord events), like the Champion's
+static void MapViewer_FindMapScriptTrainers(const struct MapHeader *header, u16 *ids, u8 *count)
+{
+    const u8 *mapScripts = header->mapScripts;
+    const struct MapEvents *events = header->events;
+    u8 i;
+
+    if (IS_ROM_PTR(mapScripts))
+    {
+        // [u8 type][u32 script] entries, ending with type 0
+        for (; mapScripts[0] != 0; mapScripts += 5)
+        {
+            const u8 *script = ReadScriptPtr(mapScripts + 1);
+
+            if (!IS_ROM_PTR(script))
+                continue;
+
+            if (mapScripts[0] == MAP_SCRIPT_ON_FRAME_TABLE || mapScripts[0] == MAP_SCRIPT_ON_WARP_INTO_MAP_TABLE)
+            {
+                // [u16 var][u16 value][u32 script] entries, ending with var 0
+                const u8 *entry;
+
+                for (entry = script; (entry[0] | entry[1]) != 0; entry += 8)
+                    MapViewer_FindScriptTrainers(ReadScriptPtr(entry + 4), ids, count);
+            }
+            else
+            {
+                MapViewer_FindScriptTrainers(script, ids, count);
+            }
+        }
+    }
+
+    if (events != NULL)
+    {
+        for (i = 0; i < events->coordEventCount; i++)
+            MapViewer_FindScriptTrainers(events->coordEvents[i].script, ids, count);
+    }
+}
+
+// Fills in which trainers each object can battle with. Gym Leaders and the Elite Four battle from their own
+// scripts, but aren't marked as trainers in their object events. Objects with no script get any battles
+// the map starts itself (e.g. the Champion, whose battle starts when the player walks in).
+static void MapViewer_FindObjectTrainers(u8 taskId)
+{
+    struct MapViewerExtra *extra = (struct MapViewerExtra *)GetWordTaskArg(taskId, tExtra);
+    const struct MapHeader *header = (const struct MapHeader *)GetWordTaskArg(taskId, tHeader);
+    const struct MapEvents *events = header->events;
+    u16 mapTrainers[MAX_TRAINERS_PER_OBJECT];
+    u8 numMapTrainers = 0;
+    u8 i;
+
+    memset(extra->numObjectTrainers, 0, sizeof(extra->numObjectTrainers));
+    if (events == NULL)
+        return;
+
+    MapViewer_FindMapScriptTrainers(header, mapTrainers, &numMapTrainers);
+
+    for (i = 0; i < events->objectEventCount && i < MAX_VIEWER_OBJECTS; i++)
+    {
+        const struct ObjectEventTemplate *template = &events->objectEvents[i];
+
+        if (template->kind == OBJ_KIND_CLONE)
+            continue;
+
+        if (IS_ROM_PTR(template->script))
+        {
+            MapViewer_FindScriptTrainers(template->script, extra->objectTrainers[i], &extra->numObjectTrainers[i]);
+        }
+        else if (numMapTrainers != 0)
+        {
+            memcpy(extra->objectTrainers[i], mapTrainers, numMapTrainers * sizeof(u16));
+            extra->numObjectTrainers[i] = numMapTrainers;
+        }
+    }
+}
+
+static bool8 MapViewer_IsTrainerObject(const struct MapViewerExtra *extra, const struct ObjectEventTemplate *objects, u8 i)
+{
+    if (objects[i].objUnion.normal.trainerType != TRAINER_TYPE_NONE)
+        return TRUE;
+    return (i < MAX_VIEWER_OBJECTS && extra->numObjectTrainers[i] != 0);
+}
+
+// The shown trainer object under the cursor that has a known party, or 0xFF
+static u8 MapViewer_GetTrainerObjectAtCursor(u8 taskId)
+{
+    s16 *data = gTasks[taskId].data;
+    const struct MapViewerExtra *extra = (const struct MapViewerExtra *)GetWordTaskArg(taskId, tExtra);
+    const struct MapHeader *header = (const struct MapHeader *)GetWordTaskArg(taskId, tHeader);
+    const struct MapEvents *events = header->events;
+    u8 i;
+
+    if (events == NULL)
+        return 0xFF;
+
+    for (i = 0; i < events->objectEventCount && i < MAX_VIEWER_OBJECTS; i++)
+    {
+        const struct ObjectEventTemplate *template = &events->objectEvents[i];
+
+        if (template->x == tCursorX && template->y == tCursorY
+         && extra->numObjectTrainers[i] != 0 && MapViewer_ShouldShowObject(template))
+            return i;
+    }
+    return 0xFF;
+}
+
+// --- Panels (hold L for wild encounters, R on a trainer for their party) ---
+
+static void MapViewer_DestroyPanelIcons(struct MapViewerExtra *extra)
+{
+    u8 i;
+
+    for (i = 0; i < extra->numIcons; i++)
+        DestroyMonIcon(&gSprites[extra->iconSpriteIds[i]]);
+    extra->numIcons = 0;
     FreeMonIconPalettes();
 }
 
-// Prints one cell: the slot's icon, then its level range and chance to its right
-static void MapViewer_DrawWildSlot(struct WildPanel *panel, u8 cell, const struct WildPokemon *mon, u8 rate)
+static void MapViewer_CreatePanelIcon(struct MapViewerExtra *extra, u16 species, s16 x, s16 y)
 {
     u8 spriteId;
+
+    LoadMonIconPalette(species);
+    spriteId = CreateMonIcon(species, SpriteCB_MonIcon, x, y, 0, 0, FALSE);
+    if (spriteId != MAX_SPRITES)
+    {
+        gSprites[spriteId].oam.priority = 0; // In front of the panel
+        extra->iconSpriteIds[extra->numIcons++] = spriteId;
+    }
+}
+
+// Prints one cell: the slot's icon, then its level range and chance to its right
+static void MapViewer_DrawWildSlot(struct MapViewerExtra *extra, u8 cell, const struct WildPokemon *mon, u8 rate)
+{
     u8 *str;
     u8 x = (cell % WILD_PANEL_COLUMNS) * WILD_PANEL_CELL_W;
     u8 y = WILD_PANEL_HEADER_H + (cell / WILD_PANEL_COLUMNS) * WILD_PANEL_CELL_H;
@@ -897,66 +1406,270 @@ static void MapViewer_DrawWildSlot(struct WildPanel *panel, u8 cell, const struc
         *str++ = CHAR_HYPHEN;
         ConvertIntToDecimalStringN(str, mon->maxLevel, STR_CONV_MODE_LEFT_ALIGN, 3);
     }
-    AddTextPrinterParameterized3(WIN_WILD_PANEL, FONT_SMALL, x + 36, y + 4, sWildPanelHeaderColors, 0, gStringVar4);
+    AddTextPrinterParameterized3(WIN_PANEL, FONT_SMALL, x + 36, y + 4, sPanelTextColors, 0, gStringVar4);
 
     str = ConvertIntToDecimalStringN(gStringVar4, rate, STR_CONV_MODE_LEFT_ALIGN, 3);
     *str++ = CHAR_PERCENT;
     *str = EOS;
-    AddTextPrinterParameterized3(WIN_WILD_PANEL, FONT_SMALL, x + 36, y + 18, sWildPanelHeaderColors, 0, gStringVar4);
+    AddTextPrinterParameterized3(WIN_PANEL, FONT_SMALL, x + 36, y + 18, sPanelTextColors, 0, gStringVar4);
 
-    LoadMonIconPalette(mon->species);
-    spriteId = CreateMonIcon(mon->species, SpriteCB_MonIcon, x + 18, y + 18, 0, 0, FALSE);
-    if (spriteId != MAX_SPRITES)
-    {
-        gSprites[spriteId].oam.priority = 0; // In front of the panel
-        panel->iconSpriteIds[panel->numIcons++] = spriteId;
-    }
+    MapViewer_CreatePanelIcon(extra, mon->species, x + 18, y + 18);
 }
 
 static void MapViewer_DrawWildPanel(u8 taskId)
 {
     s16 *data = gTasks[taskId].data;
-    struct WildPanel *panel = (struct WildPanel *)GetWordTaskArg(taskId, tWildPanel);
+    struct MapViewerExtra *extra = (struct MapViewerExtra *)GetWordTaskArg(taskId, tExtra);
     const struct WildPokemonHeader *wild = MapViewer_GetWildHeader(tMapGroup, tMapNum);
     u8 i;
 
-    MapViewer_DestroyWildIcons(panel);
-    FillWindowPixelBuffer(WIN_WILD_PANEL, PIXEL_FILL(1));
+    MapViewer_DestroyPanelIcons(extra);
+    FillWindowPixelBuffer(WIN_PANEL, PIXEL_FILL(1));
 
     if (!MapViewer_SelectWildMethod(taskId, 0))
     {
-        AddTextPrinterParameterized3(WIN_WILD_PANEL, FONT_NORMAL, 4, 1, sWildPanelHeaderColors, 0, gText_MapViewer_NoWildMons);
+        AddTextPrinterParameterized3(WIN_PANEL, FONT_NORMAL, 4, 1, sPanelTextColors, 0, gText_MapViewer_NoWildMons);
     }
     else
     {
         const struct WildMethod *method = &sWildMethods[tWildMethod];
         const struct WildPokemonInfo *info = MapViewer_GetWildInfo(wild, tWildMethod);
 
-        AddTextPrinterParameterized3(WIN_WILD_PANEL, FONT_NORMAL, 4, 1, sWildPanelHeaderColors, 0, method->name);
+        AddTextPrinterParameterized3(WIN_PANEL, FONT_NORMAL, 4, 1, sPanelTextColors, 0, method->name);
         if (MapViewer_CountWildMethods(taskId) > 1)
-            AddTextPrinterParameterized3(WIN_WILD_PANEL, FONT_NORMAL,
+            AddTextPrinterParameterized3(WIN_PANEL, FONT_NORMAL,
                                          DISPLAY_WIDTH - 4 - GetStringWidth(FONT_NORMAL, gText_MapViewer_ChangePage, 0), 1,
-                                         sWildPanelHeaderColors, 0, gText_MapViewer_ChangePage);
+                                         sPanelTextColors, 0, gText_MapViewer_ChangePage);
 
         // Every slot is shown separately, even when several have the same species
         for (i = 0; i < method->numSlots; i++)
-            MapViewer_DrawWildSlot(panel, i, &info->wildPokemon[method->firstSlot + i], method->slotRates[i]);
+            MapViewer_DrawWildSlot(extra, i, &info->wildPokemon[method->firstSlot + i], method->slotRates[i]);
     }
 
-    PutWindowTilemap(WIN_WILD_PANEL);
-    CopyWindowToVram(WIN_WILD_PANEL, COPYWIN_FULL);
+    PutWindowTilemap(WIN_PANEL);
+    CopyWindowToVram(WIN_PANEL, COPYWIN_FULL);
 }
 
-static void MapViewer_ShowWildPanel(u8 taskId)
+// Same as GiveBoxMonInitialMoveset: the last 4 level up moves learned at or below the level
+static void MapViewer_GetDefaultMoves(u16 species, u8 level, u16 *moves)
 {
-    s16 *data = gTasks[taskId].data;
-    struct WildPanel *panel = AllocZeroed(sizeof(struct WildPanel));
+    const u16 *learnset = gLevelUpLearnsets[species];
+    u8 i, j, numMoves = 0;
 
-    if (panel == NULL)
-        return;
+    for (i = 0; i < MAX_MON_MOVES; i++)
+        moves[i] = MOVE_NONE;
 
-    SetWordTaskArg(taskId, tWildPanel, (u32)panel);
-    gSprites[tCursorSprite].invisible = TRUE;
+    for (i = 0; learnset[i] != LEVEL_UP_END; i++)
+    {
+        u16 move = learnset[i] & LEVEL_UP_MOVE_ID;
+
+        if ((learnset[i] & LEVEL_UP_MOVE_LV) > (level << 9))
+            break;
+
+        for (j = 0; j < numMoves; j++)
+        {
+            if (moves[j] == move)
+                break;
+        }
+        if (j < numMoves)
+            continue; // Already known
+
+        if (numMoves < MAX_MON_MOVES)
+        {
+            moves[numMoves++] = move;
+        }
+        else
+        {
+            for (j = 0; j < MAX_MON_MOVES - 1; j++)
+                moves[j] = moves[j + 1];
+            moves[MAX_MON_MOVES - 1] = move;
+        }
+    }
+}
+
+// Trainer party members as the ROM lays them out. agbcc pads every struct to a multiple of 4 bytes, so these
+// are 8 or 16 bytes long, where battle.h's versions (without the padding) are 6, 8, 14 and 16.
+struct ALIGNED(4) RomTrainerMonNoItemDefaultMoves
+{
+    u16 iv;
+    u8 lvl;
+    u16 species;
+};
+
+struct ALIGNED(4) RomTrainerMonNoItemCustomMoves
+{
+    u16 iv;
+    u8 lvl;
+    u16 species;
+    u16 moves[MAX_MON_MOVES];
+};
+
+struct ALIGNED(4) RomTrainerMonItemDefaultMoves
+{
+    u16 iv;
+    u8 lvl;
+    u16 species;
+    u16 heldItem;
+};
+
+struct ALIGNED(4) RomTrainerMonItemCustomMoves
+{
+    u16 iv;
+    u8 lvl;
+    u16 species;
+    u16 heldItem;
+    u16 moves[MAX_MON_MOVES];
+};
+
+// Prints one row: icon, then species, level, IV and held item on the first line, and the moves two per line below
+static void MapViewer_DrawTrainerMon(struct MapViewerExtra *extra, const struct Trainer *trainer, u8 slot, u8 row)
+{
+    u16 species, iv, heldItem = ITEM_NONE;
+    u16 moves[MAX_MON_MOVES];
+    u8 level, i;
+    u8 *str;
+    u8 y = WILD_PANEL_HEADER_H + row * TRAINER_PANEL_ROW_H;
+
+    switch (trainer->partyFlags & (F_TRAINER_PARTY_CUSTOM_MOVESET | F_TRAINER_PARTY_HELD_ITEM))
+    {
+    case 0:
+    {
+        const struct RomTrainerMonNoItemDefaultMoves *mon = &((const struct RomTrainerMonNoItemDefaultMoves *)trainer->party.NoItemDefaultMoves)[slot];
+        species = mon->species;
+        level = mon->lvl;
+        iv = mon->iv;
+        MapViewer_GetDefaultMoves(species, level, moves);
+        break;
+    }
+    case F_TRAINER_PARTY_CUSTOM_MOVESET:
+    {
+        const struct RomTrainerMonNoItemCustomMoves *mon = &((const struct RomTrainerMonNoItemCustomMoves *)trainer->party.NoItemCustomMoves)[slot];
+        species = mon->species;
+        level = mon->lvl;
+        iv = mon->iv;
+        memcpy(moves, mon->moves, sizeof(moves));
+        break;
+    }
+    case F_TRAINER_PARTY_HELD_ITEM:
+    {
+        const struct RomTrainerMonItemDefaultMoves *mon = &((const struct RomTrainerMonItemDefaultMoves *)trainer->party.ItemDefaultMoves)[slot];
+        species = mon->species;
+        level = mon->lvl;
+        iv = mon->iv;
+        heldItem = mon->heldItem;
+        MapViewer_GetDefaultMoves(species, level, moves);
+        break;
+    }
+    default:
+    {
+        const struct RomTrainerMonItemCustomMoves *mon = &((const struct RomTrainerMonItemCustomMoves *)trainer->party.ItemCustomMoves)[slot];
+        species = mon->species;
+        level = mon->lvl;
+        iv = mon->iv;
+        heldItem = mon->heldItem;
+        memcpy(moves, mon->moves, sizeof(moves));
+        break;
+    }
+    }
+
+    // Species, level, IV (trainer parties give the same IV for every stat, stored as 0-255) and held item
+    AddTextPrinterParameterized3(WIN_PANEL, FONT_SMALL, TRAINER_PANEL_TEXT_X, y + 2, sPanelTextColors, 0, gSpeciesNames[species]);
+
+    str = StringCopy(gStringVar4, gText_MapViewer_Lv);
+    ConvertIntToDecimalStringN(str, level, STR_CONV_MODE_LEFT_ALIGN, 3);
+    AddTextPrinterParameterized3(WIN_PANEL, FONT_SMALL, TRAINER_PANEL_TEXT_X + 58, y + 2, sPanelTextColors, 0, gStringVar4);
+
+    str = StringCopy(gStringVar4, gText_MapViewer_IV);
+    *str++ = CHAR_SPACE; // The string compiler drops trailing spaces
+    ConvertIntToDecimalStringN(str, iv * 31 / 255, STR_CONV_MODE_LEFT_ALIGN, 2);
+    AddTextPrinterParameterized3(WIN_PANEL, FONT_SMALL, TRAINER_PANEL_TEXT_X + 88, y + 2, sPanelTextColors, 0, gStringVar4);
+
+    AddTextPrinterParameterized3(WIN_PANEL, FONT_SMALL, TRAINER_PANEL_TEXT_X + 120, y + 2, sPanelTextColors, 0,
+                                 heldItem != ITEM_NONE ? ItemId_GetName(heldItem) : gText_MapViewer_NoItem);
+
+    // Moves, two per line
+    for (i = 0; i < MAX_MON_MOVES; i++)
+        AddTextPrinterParameterized3(WIN_PANEL, FONT_SMALL,
+                                     TRAINER_PANEL_TEXT_X + (i % 2) * TRAINER_PANEL_MOVE_W,
+                                     y + 2 + TRAINER_PANEL_LINE_H * (1 + i / 2),
+                                     sPanelTextColors, 0,
+                                     moves[i] != MOVE_NONE ? gMoveNames[moves[i]] : gText_MapViewer_NoMove);
+
+    MapViewer_CreatePanelIcon(extra, species, 18, y + 22);
+}
+
+static void MapViewer_DrawTrainerPanel(u8 taskId)
+{
+    struct MapViewerExtra *extra = (struct MapViewerExtra *)GetWordTaskArg(taskId, tExtra);
+    u8 numTrainers = extra->numObjectTrainers[extra->trainerObject];
+    const struct Trainer *trainer = &gTrainers[extra->objectTrainers[extra->trainerObject][extra->trainerPage]];
+    u8 *str;
+    u8 i;
+
+    MapViewer_DestroyPanelIcons(extra);
+    FillWindowPixelBuffer(WIN_PANEL, PIXEL_FILL(1));
+
+    // Header: class and name on the left; double battle, and which of the object's trainers this is, on the right
+    str = StringCopy(gStringVar4, gTrainerClassNames[trainer->trainerClass]);
+    *str++ = CHAR_SPACE;
+    // Same as the battle text: the rival's teams use the name the player gave them
+    if (trainer->trainerClass == TRAINER_CLASS_RIVAL_EARLY || trainer->trainerClass == TRAINER_CLASS_RIVAL_LATE
+     || trainer->trainerClass == TRAINER_CLASS_CHAMPION)
+        StringCopy(str, (const u8 *)gSaveBlock1Ptr + SAVEBLOCK1_RIVAL_NAME_OFFSET);
+    else
+        StringCopy(str, trainer->trainerName);
+    AddTextPrinterParameterized3(WIN_PANEL, FONT_NORMAL, 4, 1, sPanelTextColors, 0, gStringVar4);
+
+    str = gStringVar4;
+    *str = EOS;
+    if (trainer->doubleBattle)
+        str = StringCopy(str, gText_MapViewer_Double);
+    if (numTrainers > 1)
+    {
+        if (str != gStringVar4)
+            *str++ = CHAR_SPACE;
+        str = ConvertIntToDecimalStringN(str, extra->trainerPage + 1, STR_CONV_MODE_LEFT_ALIGN, 1);
+        *str++ = CHAR_SLASH;
+        str = ConvertIntToDecimalStringN(str, numTrainers, STR_CONV_MODE_LEFT_ALIGN, 1);
+        *str++ = CHAR_SPACE;
+        str = StringCopy(str, gText_MapViewer_DpadLeftRight);
+    }
+    if (trainer->partySize > TRAINER_PANEL_ROWS)
+    {
+        if (str != gStringVar4)
+            *str++ = CHAR_SPACE;
+        StringCopy(str, gText_MapViewer_DpadUpDown); // More of the party on the other page
+    }
+    if (gStringVar4[0] != EOS)
+        AddTextPrinterParameterized3(WIN_PANEL, FONT_NORMAL, DISPLAY_WIDTH - 4 - GetStringWidth(FONT_NORMAL, gStringVar4, 0), 1,
+                                     sPanelTextColors, 0, gStringVar4);
+
+    for (i = 0; i < TRAINER_PANEL_ROWS; i++)
+    {
+        u8 slot = extra->trainerPartyPage * TRAINER_PANEL_ROWS + i;
+
+        if (slot >= trainer->partySize || slot >= PARTY_SIZE)
+            break;
+        MapViewer_DrawTrainerMon(extra, trainer, slot, i);
+    }
+
+    PutWindowTilemap(WIN_PANEL);
+    CopyWindowToVram(WIN_PANEL, COPYWIN_FULL);
+}
+
+static void MapViewer_ShowPanel(u8 taskId, u8 panel)
+{
+    struct MapViewerExtra *extra = (struct MapViewerExtra *)GetWordTaskArg(taskId, tExtra);
+    u8 i;
+
+    extra->panel = panel;
+
+    // Hide the map's sprites (objects and cursor). HidePanel's MapViewer_UpdateSprites shows them again.
+    for (i = 0; i < MAX_SPRITES; i++)
+    {
+        if (gSprites[i].inUse && gSprites[i].sOnMap == MAP_SPRITE_TAG)
+            gSprites[i].invisible = TRUE;
+    }
 
     // Window 0 covers the whole screen: only the (unblended) panel and the icons in front of it are shown
     SetGpuReg(REG_OFFSET_WIN0H, WIN_RANGE(0, DISPLAY_WIDTH));
@@ -964,52 +1677,93 @@ static void MapViewer_ShowWildPanel(u8 taskId)
     SetGpuReg(REG_OFFSET_WININ, WININ_WIN0_BG0 | WININ_WIN0_OBJ);
     SetGpuRegBits(REG_OFFSET_DISPCNT, DISPCNT_WIN0_ON);
 
-    MapViewer_DrawWildPanel(taskId);
+    if (panel == PANEL_WILD)
+        MapViewer_DrawWildPanel(taskId);
+    else
+        MapViewer_DrawTrainerPanel(taskId);
 }
 
-static void MapViewer_HideWildPanel(u8 taskId)
+static void MapViewer_HidePanel(u8 taskId)
 {
     s16 *data = gTasks[taskId].data;
-    struct WildPanel *panel = (struct WildPanel *)GetWordTaskArg(taskId, tWildPanel);
+    struct MapViewerExtra *extra = (struct MapViewerExtra *)GetWordTaskArg(taskId, tExtra);
 
-    MapViewer_DestroyWildIcons(panel);
-    Free(panel);
-    SetWordTaskArg(taskId, tWildPanel, (u32)NULL);
+    MapViewer_DestroyPanelIcons(extra);
+    extra->panel = PANEL_NONE;
 
     MapViewer_RefreshOverlay(taskId); // Clears the panel, and puts back the highlights, info box and window 0
     MapViewer_UpdateSprites(tScrollX, tScrollY); // Shows the cursor again
 }
 
-// The panel is up for as long as L is held. Returns TRUE while it's up, so other input is ignored.
-static bool8 MapViewer_HandleWildPanel(u8 taskId)
+// A panel is up for as long as its button is held: L for wild encounters, R on a trainer for their party.
+// L and R are read raw, so they work the same with the "L=A" button mode.
+// Returns TRUE while a panel is up, so other input is ignored.
+static bool8 MapViewer_HandlePanels(u8 taskId)
 {
     s16 *data = gTasks[taskId].data;
-    bool8 shown = (GetWordTaskArg(taskId, tWildPanel) != 0);
+    struct MapViewerExtra *extra = (struct MapViewerExtra *)GetWordTaskArg(taskId, tExtra);
+    u8 wanted = PANEL_NONE;
+    u8 trainerObject = 0xFF;
 
-    // Raw, so it works the same with the "L=A" button mode
     if (JOY_HELD_RAW(L_BUTTON))
+        wanted = PANEL_WILD;
+    else if (JOY_HELD_RAW(R_BUTTON) && (extra->panel == PANEL_TRAINER || (trainerObject = MapViewer_GetTrainerObjectAtCursor(taskId)) != 0xFF))
+        wanted = PANEL_TRAINER;
+
+    if (wanted != extra->panel)
     {
-        if (!shown)
+        if (extra->panel != PANEL_NONE)
+            MapViewer_HidePanel(taskId);
+        if (wanted == PANEL_TRAINER)
         {
-            MapViewer_ShowWildPanel(taskId);
+            extra->trainerObject = trainerObject;
+            extra->trainerPage = 0;
+            extra->trainerPartyPage = 0;
         }
-        else if (JOY_NEW(DPAD_LEFT) || JOY_NEW(DPAD_RIGHT))
+        if (wanted != PANEL_NONE)
+            MapViewer_ShowPanel(taskId, wanted);
+    }
+    else if (wanted != PANEL_NONE && (JOY_NEW(DPAD_LEFT) || JOY_NEW(DPAD_RIGHT)))
+    {
+        s8 direction = JOY_NEW(DPAD_LEFT) ? -1 : 1;
+
+        if (wanted == PANEL_WILD)
         {
             s16 oldMethod = tWildMethod;
 
-            MapViewer_SelectWildMethod(taskId, JOY_NEW(DPAD_LEFT) ? -1 : 1);
+            MapViewer_SelectWildMethod(taskId, direction);
             if (tWildMethod != oldMethod)
             {
                 PlaySE(SE_SELECT);
                 MapViewer_DrawWildPanel(taskId);
             }
         }
-        return TRUE;
+        else
+        {
+            u8 numTrainers = extra->numObjectTrainers[extra->trainerObject];
+
+            if (numTrainers > 1)
+            {
+                extra->trainerPage = (extra->trainerPage + numTrainers + direction) % numTrainers;
+                extra->trainerPartyPage = 0;
+                PlaySE(SE_SELECT);
+                MapViewer_DrawTrainerPanel(taskId);
+            }
+        }
+    }
+    else if (wanted == PANEL_TRAINER && (JOY_NEW(DPAD_UP) || JOY_NEW(DPAD_DOWN)))
+    {
+        const struct Trainer *trainer = &gTrainers[extra->objectTrainers[extra->trainerObject][extra->trainerPage]];
+
+        if (trainer->partySize > TRAINER_PANEL_ROWS)
+        {
+            extra->trainerPartyPage ^= 1; // Two pages: party members 1-3 and 4-6
+            PlaySE(SE_SELECT);
+            MapViewer_DrawTrainerPanel(taskId);
+        }
     }
 
-    if (shown)
-        MapViewer_HideWildPanel(taskId);
-    return FALSE;
+    return (wanted != PANEL_NONE);
 }
 
 static void Task_MapViewer(u8 taskId)
@@ -1025,7 +1779,7 @@ static void Task_MapViewer(u8 taskId)
     if (gPaletteFade.active)
         return;
 
-    if (MapViewer_HandleWildPanel(taskId))
+    if (MapViewer_HandlePanels(taskId))
         return;
 
     if (JOY_NEW(B_BUTTON))
@@ -1082,6 +1836,7 @@ static void Task_MapViewerExit(u8 taskId)
 
     returnCallback = (MainCallback)GetWordTaskArg(taskId, tCallback);
     FreeAllWindowBuffers(); // Doesn't free the BG tilemap buffers below, since they were set before InitWindows
+    Free((void *)GetWordTaskArg(taskId, tExtra));
     Free(GetBgTilemapBuffer(BG_OVERLAY));
     Free(GetBgTilemapBuffer(BG_TOP));
     Free(GetBgTilemapBuffer(BG_MIDDLE));
