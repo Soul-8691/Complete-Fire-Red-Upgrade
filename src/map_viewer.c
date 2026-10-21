@@ -585,23 +585,48 @@ static void DrawMetatileLayer(u8 bg, u16 offset, const u16 *tiles)
     tilemap[offset + 33] = tiles[3];
 }
 
-// Mirrors DrawMetatile in field_camera.c
+// The layer types as the ROM's DrawMetatile handles them, with CFRU's triple layer blocks (DrawBlockHook at
+// 0x805A9B8). Its jump table (0x8880330) sends 1 and 2 to the opposite cases to pokefirered's
+// METATILE_LAYER_TYPE_COVERED and _SPLIT, so they're named here by what they draw.
+#define LAYER_TYPE_MIDDLE_TOP    0 // Normal
+#define LAYER_TYPE_BOTTOM_TOP    1
+#define LAYER_TYPE_BOTTOM_MIDDLE 2
+#define LAYER_TYPE_TRIPLE        3 // Uses 12 tiles: the third layer is the first 4 tiles of the next metatile
+
+static void FillMetatileLayer(u8 bg, u16 offset, u16 tile)
+{
+    u16 *tilemap = GetBgTilemapBuffer(bg);
+
+    tilemap[offset] = tile;
+    tilemap[offset + 1] = tile;
+    tilemap[offset + 32] = tile;
+    tilemap[offset + 33] = tile;
+}
+
+// Mirrors DrawMetatile in field_camera.c as patched by DrawBlockHook
 static void DrawMetatile(u8 layerType, const u16 *tiles, u16 offset)
 {
     switch (layerType)
     {
-    case METATILE_LAYER_TYPE_SPLIT:
+    case LAYER_TYPE_MIDDLE_TOP:
+        FillMetatileLayer(BG_BOTTOM, offset, 0x3014); // The same filler tile the game puts under these
+        DrawMetatileLayer(BG_MIDDLE, offset, tiles);
+        DrawMetatileLayer(BG_TOP, offset, tiles + 4);
+        break;
+    case LAYER_TYPE_BOTTOM_TOP:
         DrawMetatileLayer(BG_BOTTOM, offset, tiles);
         DrawMetatileLayer(BG_TOP, offset, tiles + 4);
         break;
-    case METATILE_LAYER_TYPE_COVERED:
+    case LAYER_TYPE_BOTTOM_MIDDLE:
         DrawMetatileLayer(BG_BOTTOM, offset, tiles);
         DrawMetatileLayer(BG_MIDDLE, offset, tiles + 4);
         break;
-    case METATILE_LAYER_TYPE_NORMAL:
-    default:
-        DrawMetatileLayer(BG_MIDDLE, offset, tiles);
-        DrawMetatileLayer(BG_TOP, offset, tiles + 4);
+    case LAYER_TYPE_TRIPLE:
+        DrawMetatileLayer(BG_BOTTOM, offset, tiles);
+        DrawMetatileLayer(BG_MIDDLE, offset, tiles + 4);
+        DrawMetatileLayer(BG_TOP, offset, tiles + 8);
+        break;
+    default: // The game draws nothing for these either
         break;
     }
 }
