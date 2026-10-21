@@ -549,6 +549,17 @@ static const struct MapHeader *MapViewer_GetWarpDestination(const struct WarpEve
 }
 
 // Switches the viewer to the warp's destination map, with the cursor on the target warp
+// Fades out and loads another map with the cursor at x, y
+static void MapViewer_SwitchMap(u8 taskId, u8 mapGroup, u8 mapNum, const struct MapHeader *header, s16 x, s16 y)
+{
+    SetWordTaskArg(taskId, tHeader, (u32)header);
+    gTasks[taskId].tMapGroup = mapGroup;
+    gTasks[taskId].tMapNum = mapNum;
+    MapViewer_SetCursor(taskId, x, y);
+    BeginNormalPaletteFade(PALETTES_ALL, 0, 0, 16, RGB_BLACK);
+    gTasks[taskId].func = Task_MapViewerWaitFadeThenLoadMap;
+}
+
 static bool8 MapViewer_TryFollowWarp(u8 taskId, const struct WarpEvent *warp)
 {
     const struct MapHeader *destHeader = MapViewer_GetWarpDestination(warp);
@@ -565,14 +576,65 @@ static bool8 MapViewer_TryFollowWarp(u8 taskId, const struct WarpEvent *warp)
         y = destEvents->warps[warp->warpId].y;
     }
 
-    SetWordTaskArg(taskId, tHeader, (u32)destHeader);
-    gTasks[taskId].tMapGroup = warp->mapGroup;
-    gTasks[taskId].tMapNum = warp->mapNum;
-    MapViewer_SetCursor(taskId, x, y);
+    MapViewer_SwitchMap(taskId, warp->mapGroup, warp->mapNum, destHeader, x, y);
     PlaySE(SE_WARP_IN);
-    BeginNormalPaletteFade(PALETTES_ALL, 0, 0, 16, RGB_BLACK);
-    gTasks[taskId].func = Task_MapViewerWaitFadeThenLoadMap;
     return TRUE;
+}
+
+// Moves the cursor off the edge of the map into the map connected there, like walking across the border.
+// Same coordinate conversion as SetPositionFromConnection in fieldmap.c.
+static bool8 MapViewer_TryFollowConnection(u8 taskId, u8 direction)
+{
+    s16 *data = gTasks[taskId].data;
+    const struct MapHeader *header = (const struct MapHeader *)GetWordTaskArg(taskId, tHeader);
+    const struct MapConnections *connections = header->connections;
+    s32 i;
+
+    if (connections == NULL || connections->connections == NULL)
+        return FALSE;
+
+    for (i = 0; i < connections->count; i++)
+    {
+        const struct MapConnection *connection = &connections->connections[i];
+        const struct MapHeader *destHeader;
+        s32 x = tCursorX, y = tCursorY;
+
+        if (connection->direction != direction)
+            continue;
+
+        destHeader = Overworld_GetMapHeaderByGroupAndId(connection->mapGroup, connection->mapNum);
+        if (destHeader == NULL || destHeader->mapLayout == NULL)
+            continue;
+
+        switch (direction)
+        {
+        case CONNECTION_NORTH:
+            x -= connection->offset;
+            y = destHeader->mapLayout->height - 1;
+            break;
+        case CONNECTION_SOUTH:
+            x -= connection->offset;
+            y = 0;
+            break;
+        case CONNECTION_WEST:
+            x = destHeader->mapLayout->width - 1;
+            y -= connection->offset;
+            break;
+        case CONNECTION_EAST:
+            x = 0;
+            y -= connection->offset;
+            break;
+        }
+
+        // A map can have several connections on one side; use the one this part of the edge leads into
+        if (x < 0 || y < 0 || x >= destHeader->mapLayout->width || y >= destHeader->mapLayout->height)
+            continue;
+
+        MapViewer_SwitchMap(taskId, connection->mapGroup, connection->mapNum, destHeader, x, y);
+        return TRUE;
+    }
+
+    return FALSE;
 }
 
 static void DrawMetatileLayer(u8 bg, u16 offset, const u16 *tiles)
@@ -1843,6 +1905,13 @@ static void Task_MapViewer(u8 taskId)
     }
 
     if (JOY_NEW(A_BUTTON) && MapViewer_TryFollowWarp(taskId, MapViewer_GetWarpAt(header, tCursorX, tCursorY)))
+        return;
+
+    // Pushing past the edge of the map crosses into the connected map, if there is one there
+    if ((JOY_REPT(DPAD_LEFT) && cursorX == 0 && MapViewer_TryFollowConnection(taskId, CONNECTION_WEST))
+     || (JOY_REPT(DPAD_RIGHT) && cursorX == layout->width - 1 && MapViewer_TryFollowConnection(taskId, CONNECTION_EAST))
+     || (JOY_REPT(DPAD_UP) && cursorY == 0 && MapViewer_TryFollowConnection(taskId, CONNECTION_NORTH))
+     || (JOY_REPT(DPAD_DOWN) && cursorY == layout->height - 1 && MapViewer_TryFollowConnection(taskId, CONNECTION_SOUTH)))
         return;
 
     if (JOY_REPT(DPAD_LEFT) && cursorX > 0)
