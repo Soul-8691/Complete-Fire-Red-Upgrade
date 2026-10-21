@@ -33297,7 +33297,7 @@ sSixIslandAlteringCave_8_FireRed_LandMons = 0x083c9c48;
 sSixIslandAlteringCave_8_FireRed_LandMonsInfo = 0x083c9c78;
 sSixIslandAlteringCave_9_FireRed_LandMons = 0x083c9c80;
 sSixIslandAlteringCave_9_FireRed_LandMonsInfo = 0x083c9cb0;
-gWildMonHeaders = 0x083c9cb8;
+gWildMonHeaders = 0x08A1B1B0;
 sUnownLetterSlots = 0x083ca71c;
 sNewGameOakObject_Gfx = 0x083ca770;
 sNewGameOakObject_Pal = 0x083caf70;
@@ -50808,3 +50808,5 @@ sEmptyPal = 0x08eafe80;
 gBerryCrush_Crusher_Pal = 0x08eafea0;
 gBerryCrush_Crusher_Gfx = 0x08eaffc0;
 gBerryCrush_TextWindows_Tilemap = 0x08eb0adc;
+
+FindOrLoadNPCPalette = 0x08b0080c|1;

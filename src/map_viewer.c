@@ -245,6 +245,11 @@ struct MapViewerExtra
     // Trainer IDs each object can battle with, found from the scripts when the map is loaded
     u8 numObjectTrainers[MAX_VIEWER_OBJECTS];
     u16 objectTrainers[MAX_VIEWER_OBJECTS][MAX_TRAINERS_PER_OBJECT];
+    // While a panel is up, its icons may use any sprite palette slot (the map's sprites are hidden),
+    // so the map's sprite palettes are put aside and restored when it closes
+    u8 savedReservedPalCount;
+    u16 savedObjPalsUnfaded[OBJ_PLTT_SIZE / sizeof(u16)];
+    u16 savedObjPalsFaded[OBJ_PLTT_SIZE / sizeof(u16)];
 };
 
 // Cursor: 16x16 square outline, black outside and white inside so it shows up on anything
@@ -311,6 +316,7 @@ extern u8 GetAttributeByMetatileIdAndMapLayout(const struct MapLayout *mapLayout
 extern const u8 gInitialMovementTypeFacingDirections[];
 extern const u8 sElevationToPriority[];
 extern const u8 sElevationToSubspriteTableNum[];
+extern u8 FindOrLoadNPCPalette(u16 palTag); // CFRU's dynamic overworld palettes (dynamic_ow_pals.c), already in the ROM
 
 extern const u8 gText_MapViewer_WarpInfo[];
 extern const u8 gText_MapViewer_DynamicWarp[];
@@ -769,8 +775,9 @@ static bool8 MapViewer_ShouldShowObject(const struct ObjectEventTemplate *templa
     return TRUE;
 }
 
-// Mirrors TrySetupObjectEventSprite in event_object_movement.c
-static void MapViewer_CreateObjectSprite(const struct ObjectEventTemplate *template)
+// Mirrors TrySetupObjectEventSprite in event_object_movement.c, with CFRU's dynamic overworld palettes.
+// Returns the palette slot it used, or 0xFF if it couldn't make the sprite.
+static u8 MapViewer_CreateObjectSprite(const struct ObjectEventTemplate *template)
 {
     u8 spriteId;
     u8 graphicsId = template->graphicsId;
@@ -784,20 +791,19 @@ static void MapViewer_CreateObjectSprite(const struct ObjectEventTemplate *templ
         graphicsId = VarGetObjectEventGraphicsId(graphicsId - OBJ_EVENT_GFX_VARS);
 
     graphicsInfo = GetObjectEventGraphicsInfo(graphicsId);
-    // The NPC palettes are already in their fixed slots, only the player and special slots change per object
-    if (graphicsInfo->paletteSlot == PALSLOT_PLAYER || graphicsInfo->paletteSlot == PALSLOT_NPC_SPECIAL)
-        PatchObjectPalette(graphicsInfo->paletteTag, graphicsInfo->paletteSlot);
 
     CopyObjectGraphicsInfoToSpriteTemplate(graphicsId, SpriteCallbackDummy, &spriteTemplate, &subspriteTables);
     spriteTemplate.paletteTag = TAG_NONE;
     spriteId = CreateSprite(&spriteTemplate, 0, 0, 0);
     if (spriteId == MAX_SPRITES)
-        return;
+        return 0xFF;
 
     sprite = &gSprites[spriteId];
     sprite->centerToCornerVecX = -(graphicsInfo->width >> 1);
     sprite->centerToCornerVecY = -(graphicsInfo->height >> 1);
-    sprite->oam.paletteNum = graphicsInfo->paletteSlot;
+    // Same as CFRU's SetPalNPC hooks: the palette is loaded into whichever slot is free (or already has it),
+    // and DestroySprite releases it again
+    sprite->oam.paletteNum = FindOrLoadNPCPalette(graphicsInfo->paletteTag);
     if (subspriteTables != NULL)
     {
         SetSubspriteTables(sprite, subspriteTables);
@@ -812,23 +818,32 @@ static void MapViewer_CreateObjectSprite(const struct ObjectEventTemplate *templ
     sprite->sMapY = template->y;
     sprite->sElevation = elevation;
     sprite->sOnMap = MAP_SPRITE_TAG;
+    return sprite->oam.paletteNum;
 }
 
+// Must come straight after ResetSpriteData and FreeAllSpritePalettes. CFRU hooks ResetSpriteData to clear its
+// overworld palette references, so the NPC palettes are handed out from slot 0 up.
 static void MapViewer_CreateObjectSprites(const struct MapHeader *header)
 {
-    u8 i;
+    u8 i, palSlot;
+    u8 numNpcPalSlots = 0;
     const struct MapEvents *events = header->events;
 
-    InitObjectEventPalettes(0); // Same NPC palette slots the field uses
-
-    if (events == NULL)
-        return;
-
-    for (i = 0; i < events->objectEventCount; i++)
+    if (events != NULL)
     {
-        if (MapViewer_ShouldShowObject(&events->objectEvents[i]))
-            MapViewer_CreateObjectSprite(&events->objectEvents[i]);
+        for (i = 0; i < events->objectEventCount; i++)
+        {
+            if (!MapViewer_ShouldShowObject(&events->objectEvents[i]))
+                continue;
+
+            palSlot = MapViewer_CreateObjectSprite(&events->objectEvents[i]);
+            if (palSlot != 0xFF && palSlot >= numNpcPalSlots)
+                numNpcPalSlots = palSlot + 1;
+        }
     }
+
+    // Other sprite palettes (the cursor and the panels' Pokemon icons) go in the slots after the NPCs'
+    gReservedSpritePaletteCount = numNpcPalSlots;
 }
 
 // Every sprite in the viewer (objects and the cursor) sits on a metatile, so just move them all
@@ -1671,6 +1686,13 @@ static void MapViewer_ShowPanel(u8 taskId, u8 panel)
             gSprites[i].invisible = TRUE;
     }
 
+    // Busy maps can use nearly every sprite palette slot for NPCs, leaving none for the icons.
+    // With the map's sprites hidden, the icons can have any slot; HidePanel puts the map's palettes back.
+    memcpy(extra->savedObjPalsUnfaded, &gPlttBufferUnfaded[OBJ_PLTT_OFFSET], OBJ_PLTT_SIZE);
+    memcpy(extra->savedObjPalsFaded, &gPlttBufferFaded[OBJ_PLTT_OFFSET], OBJ_PLTT_SIZE);
+    extra->savedReservedPalCount = gReservedSpritePaletteCount;
+    gReservedSpritePaletteCount = 0;
+
     // Window 0 covers the whole screen: only the (unblended) panel and the icons in front of it are shown
     SetGpuReg(REG_OFFSET_WIN0H, WIN_RANGE(0, DISPLAY_WIDTH));
     SetGpuReg(REG_OFFSET_WIN0V, WIN_RANGE(0, DISPLAY_HEIGHT));
@@ -1690,6 +1712,11 @@ static void MapViewer_HidePanel(u8 taskId)
 
     MapViewer_DestroyPanelIcons(extra);
     extra->panel = PANEL_NONE;
+
+    // Put back the palettes the icons were drawn over (see ShowPanel)
+    gReservedSpritePaletteCount = extra->savedReservedPalCount;
+    memcpy(&gPlttBufferUnfaded[OBJ_PLTT_OFFSET], extra->savedObjPalsUnfaded, OBJ_PLTT_SIZE);
+    memcpy(&gPlttBufferFaded[OBJ_PLTT_OFFSET], extra->savedObjPalsFaded, OBJ_PLTT_SIZE);
 
     MapViewer_RefreshOverlay(taskId); // Clears the panel, and puts back the highlights, info box and window 0
     MapViewer_UpdateSprites(tScrollX, tScrollY); // Shows the cursor again
