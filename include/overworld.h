@@ -1,9 +1,6 @@
 #ifndef GUARD_OVERWORLD_H
 #define GUARD_OVERWORLD_H
 
-#include "global.h"
-#include "main.h"
-
 #define LINK_KEY_CODE_NULL 0x00
 #define LINK_KEY_CODE_EMPTY 0x11
 #define LINK_KEY_CODE_DPAD_DOWN 0x12
@@ -20,12 +17,20 @@
 // resolved.
 #define LINK_KEY_CODE_HANDLE_RECV_QUEUE 0x1B
 #define LINK_KEY_CODE_HANDLE_SEND_QUEUE 0x1C
-
 #define LINK_KEY_CODE_EXIT_SEAT 0x1D
+#define LINK_KEY_CODE_UNK_8 0x1E
 
 #define MOVEMENT_MODE_FREE 0
 #define MOVEMENT_MODE_FROZEN 1
 #define MOVEMENT_MODE_SCRIPTED 2
+
+#define SKIP_OBJECT_EVENT_LOAD  1
+
+struct InitialPlayerAvatarState
+{
+    u8 transitionFlags;
+    u8 direction;
+};
 
 struct LinkPlayerObjectEvent
 {
@@ -35,158 +40,119 @@ struct LinkPlayerObjectEvent
     u8 movementMode;
 };
 
-struct CreditsOverworldCmd
-{
-    s16 unk_0;
-    s16 unk_2;
-    s16 unk_4;
-};
-
-/* gDisableMapMusicChangeOnMapLoad */
-#define MUSIC_DISABLE_OFF 0
-#define MUSIC_DISABLE_STOP 1
-#define MUSIC_DISABLE_KEEP 2
-
-extern const struct Coords32 gDirectionToVectors[];
-
-extern struct LinkPlayerObjectEvent gLinkPlayerObjectEvents[4];
-extern MainCallback gFieldCallback;
-
 extern struct WarpData gLastUsedWarp;
+extern struct LinkPlayerObjectEvent gLinkPlayerObjectEvents[4];
 
-extern u8 gExitStairsMovementDisabled;
-extern u8 gFieldLinkPlayerCount;
+extern u16 *gOverworldTilemapBuffer_Bg2;
+extern u16 *gOverworldTilemapBuffer_Bg1;
+extern u16 *gOverworldTilemapBuffer_Bg3;
+extern u16 gHeldKeyCodeToSend;
+extern void (*gFieldCallback)(void);
+extern bool8 (*gFieldCallback2)(void);
 extern u8 gLocalLinkPlayerId;
+extern u8 gFieldLinkPlayerCount;
 
+extern const struct UCoords32 gDirectionToVectors[];
+
+void DoWhiteOut(void);
+void Overworld_ResetStateAfterFly(void);
+void Overworld_ResetStateAfterTeleport(void);
+void Overworld_ResetStateAfterDigEscRope(void);
+void ResetGameStats(void);
 void IncrementGameStat(u8 index);
-
-void SetObjEventTemplateCoords(u8, s16, s16);
-void SetObjEventTemplateMovementType(u8, u8);
-
+u32 GetGameStat(u8 index);
+void SetGameStat(u8 index, u32 value);
+void ApplyNewEncryptionKeyToGameStats(u32 newKey);
+void LoadObjEventTemplatesFromHeader(void);
+void LoadSaveblockObjEventScripts(void);
+void SetObjEventTemplateCoords(u8 localId, s16 x, s16 y);
+void SetObjEventTemplateMovementType(u8 localId, u8 movementType);
+const struct MapLayout *GetMapLayout(void);
+void ApplyCurrentWarp(void);
+struct MapHeader const *const Overworld_GetMapHeaderByGroupAndId(u16 mapGroup, u16 mapNum);
+struct MapHeader const *const GetDestinationWarpMapHeader(void);
+void WarpIntoMap(void);
 void SetWarpDestination(s8 mapGroup, s8 mapNum, s8 warpId, s8 x, s8 y);
-
+void SetWarpDestinationToMapWarp(s8 mapGroup, s8 mapNum, s8 warpId);
 void SetDynamicWarp(s32 unused, s8 mapGroup, s8 mapNum, s8 warpId);
 void SetDynamicWarpWithCoords(s32 unused, s8 mapGroup, s8 mapNum, s8 warpId, s8 x, s8 y);
+void SetWarpDestinationToDynamicWarp(u8 unusedWarpId);
+void SetWarpDestinationToHealLocation(u8 healLocationId);
+void SetWarpDestinationToLastHealLocation(void);
+void SetLastHealLocationWarp(u8 healLocationId);
+void UpdateEscapeWarp(s16 x, s16 y);
+void SetEscapeWarp(s8 mapGroup, s8 mapNum, s8 warpId, s8 x, s8 y);
+void SetWarpDestinationToEscapeWarp(void);
 void SetFixedDiveWarp(s8 mapGroup, s8 mapNum, s8 warpId, s8 x, s8 y);
 void SetFixedHoleWarp(s8 mapGroup, s8 mapNum, s8 warpId, s8 x, s8 y);
-void SetEscapeWarp(s8 mapGroup, s8 mapNum, s8 warpId, s8 x, s8 y);
-void Overworld_SetHealLocationWarp(u8);
-void SetWarpDestinationToEscapeWarp(void);
-void SetWarpDestinationToLastHealLocation(void);
-u8 IsMapTypeOutdoors(u8 mapType);
-void Overworld_ClearSavedMusic(void);
-bool32 Overworld_MusicCanOverrideMapMusic(u16 song);
-
-void SetFlashLevel(s32 a1);
-u8 Overworld_GetFlashLevel(void);
-
-void Overworld_SetSavedMusic(u16);
-void Overworld_ChangeMusicToDefault(void);
-void Overworld_ChangeMusicTo(u16);
-
-bool32 IsUpdateLinkStateCBActive(void);
-
-void ClearLinkPlayerObjectEvents(void);
-const struct MapHeader *const Overworld_GetMapHeaderByGroupAndId(u16, u16);
-void ObjectEventMoveDestCoords(struct ObjectEvent *, u32, s16 *, s16 *);
-void CB2_ReturnToField(void);
-void CB2_ReturnToFieldContinueScriptPlayMapMusic(void);
-void WarpIntoMap(void);
-u8 GetMapTypeByGroupAndId(s8 mapGroup, s8 mapNum);
-void SetWarpDestinationToMapWarp(s8 mapGroup, s8 mapNum, s8 warpNum);
-void SetWarpDestinationToDynamicWarp(u8 unused);
-
-u32 GetGameStat(u8 statId);
-void SetGameStat(u8 statId, u32 value);
-
-void CB2_ContinueSavedGame(void);
-void Overworld_SetWarpDestinationFromWarp(struct WarpData *);
-void CB2_SetUpOverworldForQLPlayback(void);
-void CB2_SetUpOverworldForQLPlaybackWithWarpExit(void);
-void CB2_EnterFieldFromQuestLog(void);
-void Overworld_PlaySpecialMapMusic(void);
-
-u8 GetCurrentRegionMapSectionId(void);
-
-void SetCurrentMapLayout(u16 mapLayoutId);
 void SetWarpDestinationToFixedHoleWarp(s16 x, s16 y);
-
-void ResetInitialPlayerAvatarState(void);
-void CleanupOverworldWindowsAndTilemaps(void);
-u32 ComputeWhiteOutMoneyLoss(void);
-
-extern u8 gDisableMapMusicChangeOnMapLoad;
-extern u8 gGlobalFieldTintMode;
-
-extern bool8 (* gFieldCallback2)(void);
-
-void SetLastHealLocationWarp(u8 healLocaionId);
-void LoadMapFromCameraTransition(u8 mapGroup, u8 mapNum);
-void CB2_ReturnToFieldFromDiploma(void);
-void CB2_OverworldBasic(void);
-void CB2_NewGame(void);
-bool8 IsMapTypeOutdoors(u8 mapType);
-bool8 Overworld_MapTypeAllowsTeleportAndFly(u8 mapType);
-void Overworld_ResetStateAfterTeleport(void);
-
-void Overworld_FadeOutMapMusic(void);
-void CB2_LoadMap(void);
-bool8 BGMusicStopped(void);
-bool8 IsMapTypeIndoors(u8 mapType);
-bool32 Overworld_IsBikingAllowed(void);
-void Overworld_ResetStateAfterDigEscRope(void);
-bool32 Overworld_LinkRecvQueueLengthMoreThan2(void);
-u8 GetCurrentMapType(void);
-
-u8 GetLastUsedWarpMapType(void);
-const struct MapHeader *const GetDestinationWarpMapHeader(void);
-void TryFadeOutOldMapMusic(void);
-void CB2_ReturnToFieldCableClub(void);
-void ResetGameStats(void);
-
-void Overworld_CreditsMainCB(void);
-bool32 Overworld_DoScrollSceneForCredits(u8 *, const struct CreditsOverworldCmd *, u8);
-
-bool32 IsSendingKeysOverCable(void);
-
-void CB2_ReturnToFieldWithOpenMenu(void);
-void CB2_WhiteOut(void);
-void CB2_ReturnToFieldFromMultiplayer(void);
-void ApplyNewEncryptionKeyToGameStats(u32 newKey);
-void SetContinueGameWarpToDynamicWarp(int);
-
-void SetContinueGameWarpToHealLocation(u8 loc);
-
-void UpdateAmbientCry(s16 *state, u16 *delayCounter);
-void SetWarpDestinationToHealLocation(u8 a0);
-bool32 Overworld_SendKeysToLinkIsRunning(void);
-bool32 Overworld_RecvKeysFromLinkIsRunning(void);
-void OverworldWhiteOutGetMoneyLoss(void);
-u8 GetCurrentMapBattleScene(void);
-void Overworld_ResetStateAfterFly(void);
-bool8 MetatileBehavior_IsSurfableInSeafoamIslands(u16 metatileBehavior);
-void Overworld_ResetMapMusic(void);
-u16 QueueExitLinkRoomKey(void);
-u16 SetInCableClubSeat(void);
-u32 GetCableClubPartnersReady(void);
-u16 SetStartedCableClubActivity(void);
-u16 SetLinkWaitingForScript(void);
-void SetMainCallback1(MainCallback cb);
-void CB1_Overworld(void);
-void CB2_ReturnToFieldContinueScript(void);
-u8 GetLastUsedWarpMapSectionId(void);
-void StoreInitialPlayerAvatarState(void);
-void UpdateEscapeWarp(s16 x, s16 y);
+void SetContinueGameWarpToHealLocation(u8 healLocationId);
+void SetContinueGameWarpToDynamicWarp(int unused);
+const struct MapConnection *GetMapConnection(u8 dir);
 bool8 SetDiveWarpEmerge(u16 x, u16 y);
 bool8 SetDiveWarpDive(u16 x, u16 y);
+void LoadMapFromCameraTransition(u8 mapGroup, u8 mapNum);
+void ResetInitialPlayerAvatarState(void);
+void StoreInitialPlayerAvatarState(void);
+bool32 Overworld_IsBikingAllowed(void);
+void SetDefaultFlashLevel(void);
+void SetFlashLevel(s32 flashLevel);
+u8 GetFlashLevel(void);
+void SetCurrentMapLayout(u16 mapLayoutId);
+void SetObjectEventLoadFlag(u8 flag);
+u16 GetLocationMusic(struct WarpData *warp);
+u16 GetCurrLocationDefaultMusic(void);
+u16 GetWarpDestinationMusic(void);
+void Overworld_ResetMapMusic(void);
+void Overworld_PlaySpecialMapMusic(void);
+void Overworld_SetSavedMusic(u16 songNum);
+void Overworld_ClearSavedMusic(void);
+void Overworld_ChangeMusicToDefault(void);
+void Overworld_ChangeMusicTo(u16 newMusic);
+u8 GetMapMusicFadeoutSpeed(void);
+void TryFadeOutOldMapMusic(void);
+bool8 BGMusicStopped(void);
+void Overworld_FadeOutMapMusic(void);
+void UpdateAmbientCry(s16 *state, u16 *delayCounter);
+u8 GetMapTypeByGroupAndId(s8 mapGroup, s8 mapNum);
+u8 GetMapTypeByWarpData(struct WarpData *warp);
+u8 GetCurrentMapType(void);
+u8 GetLastUsedWarpMapType(void);
+bool8 IsMapTypeOutdoors(u8 mapType);
+bool8 Overworld_MapTypeAllowsTeleportAndFly(u8 mapType);
+bool8 IsMapTypeIndoors(u8 mapType);
+mapsec_u8_t GetSavedWarpRegionMapSectionId(void);
+mapsec_u8_t GetCurrentRegionMapSectionId(void);
+u8 GetCurrentMapBattleScene(void);
+void CleanupOverworldWindowsAndTilemaps(void);
+bool32 IsOverworldLinkActive(void);
+void CB1_Overworld(void);
+void CB2_OverworldBasic(void);
+void CB2_Overworld(void);
+void SetMainCallback1(void (*cb)(void));
+void SetUnusedCallback(void *func);
+void CB2_NewGame(void);
+void CB2_WhiteOut(void);
+void CB2_LoadMap(void);
+void CB2_ReturnToFieldContestHall(void);
+void CB2_ReturnToFieldCableClub(void);
+void CB2_ReturnToField(void);
+void CB2_ReturnToFieldFromMultiplayer(void);
+void CB2_ReturnToFieldWithOpenMenu(void);
+void CB2_ReturnToFieldContinueScript(void);
+void CB2_ReturnToFieldContinueScriptPlayMapMusic(void);
+void CB2_ReturnToFieldFadeFromBlack(void);
+void CB2_ContinueSavedGame(void);
+void ResetAllMultiplayerState(void);
+u32 GetCableClubPartnersReady(void);
+u16 SetInCableClubSeat(void);
+u16 SetLinkWaitingForScript(void);
+u16 QueueExitLinkRoomKey(void);
+u16 SetStartedCableClubActivity(void);
+bool32 Overworld_IsRecvQueueAtMax(void);
+bool32 Overworld_RecvKeysFromLinkIsRunning(void);
+bool32 Overworld_SendKeysToLinkIsRunning(void);
+bool32 IsSendingKeysOverCable(void);
+void ClearLinkPlayerObjectEvents(void);
 
-#if REVISION >= 0xA
-void ClearFieldCallback(void);
-#endif
-
-extern u16 *gBGTilemapBuffers1;
-extern u16 *gBGTilemapBuffers2;
-extern u16 *gBGTilemapBuffers3;
-extern u16 gHeldKeyCodeToSend;
-
-#endif //GUARD_OVERWORLD_H
+#endif // GUARD_OVERWORLD_H

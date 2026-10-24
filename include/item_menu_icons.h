@@ -1,34 +1,25 @@
-#ifndef GUARD_ITEM_MENU_ICONS
-#define GUARD_ITEM_MENU_ICONS
+#ifndef GUARD_ITEM_MENU_ICONS_H
+#define GUARD_ITEM_MENU_ICONS_H
 
-#include "global.h"
+extern const struct CompressedSpriteSheet gBagMaleSpriteSheet;
+extern const struct CompressedSpriteSheet gBagFemaleSpriteSheet;
+extern const struct CompressedSpritePalette gBagPaletteTable;
+extern const struct CompressedSpriteSheet gBerryCheckCircleSpriteSheet;
+extern const struct CompressedSpritePalette gBerryCheckCirclePaletteTable;
 
-// Values for 2nd argument to GetItemIconGfxPtr
-enum {
-    ITEMICON_TILES,
-    ITEMICON_PAL,
-};
-
-extern const struct CompressedSpriteSheet gSpriteSheet_BagMale;
-extern const struct CompressedSpriteSheet gSpriteSheet_BagFemale;
-extern const struct CompressedSpritePalette gSpritePalette_Bag;
-
-extern const struct CompressedSpriteSheet gBagSwapSpriteSheet;
-extern const struct CompressedSpritePalette gBagSwapSpritePalette;
-
-void ResetItemMenuIconState(void);
-void CreateSwapLine(void);
-void DestroyItemMenuIcon(bool8 a0);
-void CreateItemMenuIcon(u16 itemId, bool8 a0);
-void CopyItemIconPicTo4x4Buffer(const void *src, void *dest);
-u8 AddItemIconObject(u16 tilesTag, u16 paletteTag, u16 itemId);
-u8 AddItemIconObjectWithCustomObjectTemplate(const struct SpriteTemplate * origTemplate, u16 tilesTag, u16 paletteTag, u16 itemId);
-void CreateBerryPouchItemIcon(u16 itemId, u8 idx);
-void UpdateSwapLinePos(s16 x, u16 y);
-void SetSwapLineInvisibility(bool8 invisible);
-void SetBagVisualPocketId(u8);
+void RemoveBagSprite(u8 id);
+void AddBagVisualSprite(u8 bagPocketId);
+void SetBagVisualPocketId(u8 bagPocketId, bool8 isSwitchingPockets);
 void ShakeBagSprite(void);
-const u32 *GetItemIconGfxPtr(u16 itemId, u8 ptrId);
-void CreateBagSprite(u8 animNum);
+void AddSwitchPocketRotatingBallSprite(s16 rotationDirection);
+void AddBagItemIconSprite(u16 itemId, u8 id);
+void RemoveBagItemIconSprite(u8 id);
+void CreateItemMenuSwapLine(void);
+void SetItemMenuSwapLineInvisibility(bool8 invisible);
+void UpdateItemMenuSwapLinePos(u8 y);
+u8 CreateBerryTagSprite(u8 id, s16 x, s16 y);
+void FreeBerryTagSpritePalette(void);
+u8 CreateSpinningBerrySprite(u8 berryId, u8 x, u8 y, bool8 startAffine);
+u8 CreateBerryFlavorCircleSprite(s16 x);
 
-#endif // GUARD_ITEM_MENU_ICONS
+#endif // GUARD_ITEM_MENU_ICONS_H

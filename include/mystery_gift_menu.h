@@ -3,14 +3,16 @@
 
 extern bool8 gGiftIsFromEReader;
 
-bool32 PrintMysteryGiftMenuMessage(u8 * cmdPtr, const u8 * src);
-void AddTextPrinterToWindow1(const u8 *str);
-void MainCB_FreeAllBuffersAndReturnToInitTitleScreen(void);
-void PrintMysteryGiftOrEReaderTopMenu(bool8, bool32);
-void CB2_InitMysteryGift(void);
-void CB2_MysteryGiftEReader(void);
-s8 DoMysteryGiftYesNo(u8 * textState, u16 * windowId, bool8 yesNoBoxPlacement, const u8 * str);
-void MG_DrawTextBorder(u8 windowId);
 u16 GetMysteryGiftBaseBlock(void);
+void CB2_MysteryGiftEReader(void);
+void PrintMysteryGiftOrEReaderHeader(bool8 isEReader, bool32 useCancel);
+void MG_DrawCheckerboardPattern(u32 bg);
+void MainCB_FreeAllBuffersAndReturnToInitTitleScreen(void);
+bool32 PrintMysteryGiftMenuMessage(u8 *textState, const u8 *str);
+void MG_AddMessageTextPrinter(const u8 *str);
+void CB2_InitEReader(void);
+void CB2_InitMysteryGift(void);
+void MG_DrawTextBorder(u8 windowId);
+s8 DoMysteryGiftYesNo(u8 *textState, u16 *windowId, bool8 yesNoBoxPlacement, const u8 *str);
 
 #endif //GUARD_MYSTERY_GIFT_MENU_H

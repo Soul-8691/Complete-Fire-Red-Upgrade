@@ -2,12 +2,11 @@
 #define GUARD_GLOBAL_BERRY_H
 
 #define BERRY_NAME_LENGTH 6
-#define BERRY_NAME_COUNT 7
 #define BERRY_ITEM_EFFECT_COUNT 18
 
 struct Berry
 {
-    const u8 name[BERRY_NAME_COUNT];
+    const u8 name[BERRY_NAME_LENGTH + 1];
     u8 firmness;
     u16 size;
     u8 maxYield;
@@ -27,7 +26,7 @@ struct Berry
 
 struct Berry2
 {
-    u8 name[BERRY_NAME_COUNT];
+    u8 name[BERRY_NAME_LENGTH + 1];
     u8 firmness;
     u16 size;
     u8 maxYield;
@@ -41,6 +40,7 @@ struct Berry2
     u8 bitter;
     u8 sour;
     u8 smoothness;
+    //u8 padding;
 };
 
 struct EnigmaBerry
@@ -54,7 +54,7 @@ struct EnigmaBerry
 
 struct BattleEnigmaBerry
 {
-    /*0x00*/ u8 name[BERRY_NAME_COUNT];
+    /*0x00*/ u8 name[BERRY_NAME_LENGTH + 1];
     /*0x07*/ u8 holdEffect;
     /*0x08*/ u8 itemEffect[BERRY_ITEM_EFFECT_COUNT];
     /*0x1A*/ u8 holdEffectParam;
@@ -64,7 +64,7 @@ struct BerryTree
 {
     u8 berry;
     u8 stage:7;
-    u8 growthSparkle:1;
+    u8 stopGrowth:1;
     u16 minutesUntilNextStage;
     u8 berryYield;
     u8 regrowthCount:4;

@@ -276,7 +276,7 @@
 #define ANIM_TAG_GREEN_SPIKE                (ANIM_SPRITES_START + 266)
 #define ANIM_TAG_WHITE_CIRCLE_OF_LIGHT      (ANIM_SPRITES_START + 267)
 #define ANIM_TAG_GLOWY_BLUE_ORB             (ANIM_SPRITES_START + 268)
-#define ANIM_TAG_SAFARI_BAIT                (ANIM_SPRITES_START + 269)
+#define ANIM_TAG_POKEBLOCK                  (ANIM_SPRITES_START + 269)
 #define ANIM_TAG_WHITE_FEATHER              (ANIM_SPRITES_START + 270)
 #define ANIM_TAG_SPARKLE_6                  (ANIM_SPRITES_START + 271)
 #define ANIM_TAG_SPLASH                     (ANIM_SPRITES_START + 272)
@@ -298,10 +298,17 @@
 #define ANIM_TAG_BLUE_RING_2                (ANIM_SPRITES_START + 288)
 
 // battlers
-#define ANIM_ATTACKER    0
-#define ANIM_TARGET      1
-#define ANIM_ATK_PARTNER 2
-#define ANIM_DEF_PARTNER 3
+#define ANIM_ATTACKER         0
+#define ANIM_TARGET           1
+#define ANIM_ATK_PARTNER      2
+#define ANIM_DEF_PARTNER      3
+
+// Below are used by AnimTask_ShakeMon2 and AnimTask_SetGrayscaleOrOriginalPal
+#define ANIM_PLAYER_LEFT      (MAX_BATTLERS_COUNT + 0)
+#define ANIM_PLAYER_RIGHT     (MAX_BATTLERS_COUNT + 1)
+#define ANIM_OPPONENT_LEFT    (MAX_BATTLERS_COUNT + 2)
+#define ANIM_OPPONENT_RIGHT   (MAX_BATTLERS_COUNT + 3)
+#define ANIM_ATTACKER_FORCE   (MAX_BATTLERS_COUNT + 4)
 
 // stereo panning constants [0-255]
 //
@@ -318,7 +325,7 @@
 #define SOUND_PAN_TARGET    63
 
 // move background ids
-#define BG_NONE 0 // the same as BG_DARK
+#define BG_NONE 0 // the same as BG_DARK but is unused
 #define BG_DARK 1
 #define BG_GHOST 2
 #define BG_PSYCHIC 3
@@ -351,7 +358,7 @@
 #define B_ANIM_STATS_CHANGE             1
 #define B_ANIM_SUBSTITUTE_FADE          2
 #define B_ANIM_SUBSTITUTE_APPEAR        3
-#define B_ANIM_BAIT_THROW               4
+#define B_ANIM_POKEBLOCK_THROW          4
 #define B_ANIM_ITEM_KNOCKOFF            5
 #define B_ANIM_TURN_TRAP                6
 #define B_ANIM_HELD_ITEM_EFFECT         7
@@ -370,11 +377,6 @@
 #define B_ANIM_FOCUS_PUNCH_SETUP        20
 #define B_ANIM_INGRAIN_HEAL             21
 #define B_ANIM_WISH_HEAL                22
-#define B_ANIM_MON_SCARED               23
-#define B_ANIM_GHOST_GET_OUT            24
-#define B_ANIM_SILPH_SCOPED             25
-#define B_ANIM_ROCK_THROW               26
-#define B_ANIM_SAFARI_REACTION          27
 
 // special animations table (gBattleAnims_Special)
 #define B_ANIM_LVL_UP                   0
@@ -397,7 +399,7 @@
 #define B_ANIM_STATUS_NIGHTMARE         8
 #define B_ANIM_STATUS_WRAPPED           9 // does not actually exist
 
-// Most tasks return a value to gBattleAnimArgs[7].
+// Tasks with return values often assign them to gBattleAnimArgs[7].
 #define ARG_RET_ID 7
 
 // For createsprite macro to use internally
@@ -418,6 +420,10 @@
 #define ANIM_WEATHER_SANDSTORM 3
 #define ANIM_WEATHER_HAIL 4
 
+// Surf wave palettes
+#define ANIM_SURF_PAL_SURF           0
+#define ANIM_SURF_PAL_MUDDY_WATER    1
+
 // Flags given to various functions to indicate which palettes to consider.
 // Handled by UnpackSelectedBattlePalettes
 #define F_PAL_BG          (1 << 0)
@@ -425,8 +431,8 @@
 #define F_PAL_TARGET      (1 << 2)
 #define F_PAL_ATK_PARTNER (1 << 3)
 #define F_PAL_DEF_PARTNER (1 << 4)
-#define F_PAL_ANIM_1      (1 << 5) // Palette set for GetBattleAnimBg1Data/GetBattleAnimBgDataByPriorityRank. Only used (ineffectually?) by Aromatherapy.
-#define F_PAL_ANIM_2      (1 << 6) // Palette set for GetBattleAnimBgData/GetBattleAnimBgDataByPriorityRank. Unused.
+#define F_PAL_ANIM_1      (1 << 5) // Palette set for GetBattleAnimBg1Data/GetBgDataForTransform. Only used (ineffectually?) by Aromatherapy.
+#define F_PAL_ANIM_2      (1 << 6) // Palette set for GetBattleAnimBgData/GetBgDataForTransform. Unused.
 #define F_PAL_ATK_SIDE    (F_PAL_ATTACKER | F_PAL_ATK_PARTNER)
 #define F_PAL_DEF_SIDE    (F_PAL_TARGET | F_PAL_DEF_PARTNER)
 #define F_PAL_BATTLERS    (F_PAL_ATK_SIDE | F_PAL_DEF_SIDE)
@@ -434,33 +440,7 @@
 // It's redundant with F_PAL_BATTLERS, because they're only ever used together to refer to all the battlers at once.
 #define F_PAL_BATTLERS_2  (1 << 7 | 1 << 8 | 1 << 9 | 1 << 10)
 
-// Battle mon back animations.
-#define BACK_ANIM_NONE                         0x00
-#define BACK_ANIM_H_SLIDE_QUICK                0x01
-#define BACK_ANIM_H_SLIDE                      0x02
-#define BACK_ANIM_H_SLIDE_WITH_V_COMPRESS_1    0x03
-#define BACK_ANIM_H_SLIDE_WITH_V_COMPRESS_2    0x04
-#define BACK_ANIM_SHRINK_GROW_1                0x05
-#define BACK_ANIM_GROW_1                       0x06
-#define BACK_ANIM_CIRCLE_MOVE_COUNTERCLOCKWISE 0x07
-#define BACK_ANIM_HORIZONTAL_SHAKE             0x08
-#define BACK_ANIM_VERTICAL_SHAKE               0x09
-#define BACK_ANIM_V_SHAKE_WITH_H_SLIDE         0x0a
-#define BACK_ANIM_VERTICAL_STRETCH             0x0b
-#define BACK_ANIM_HORIZONTAL_STRETCH           0x0c
-#define BACK_ANIM_GROW_2                       0x0d
-#define BACK_ANIM_V_SHAKE_WITH_PAUSE           0x0e
-#define BACK_ANIM_CIRCLE_MOVE_CLOCKWISE        0x0f
-#define BACK_ANIM_CONCAVE_DOWN_ARC_SWAY_SMALL  0x10
-#define BACK_ANIM_CONCAVE_DOWN_ARC_SWAY_LARGE  0x11
-#define BACK_ANIM_CONCAVE_UP_ARC_SWAY_LARGE    0x12
-#define BACK_ANIM_DIP_RIGHT_SIDE               0x13
-#define BACK_ANIM_SHRINK_GROW_2                0x14
-#define BACK_ANIM_JOLT_RIGHT                   0x15
-#define BACK_ANIM_FLASH_YELLOW_WITH_SHAKE      0x16
-#define BACK_ANIM_FADE_RED_WITH_SHAKE          0x17
-#define BACK_ANIM_FADE_GREEN_WITH_SHAKE        0x18
-#define BACK_ANIM_FADE_BLUE_WITH_SHAKE         0x19
-
+enum { SHAKE_BG_X, SHAKE_BG_Y, SHAKE_MON_X, SHAKE_MON_Y };
+enum { SHAKE_MON_ATTACKER, SHAKE_MON_TARGET, SHAKE_MON_BOTH };
 
 #endif // GUARD_CONSTANTS_BATTLE_ANIM_H

@@ -1,17 +1,16 @@
 #ifndef GUARD_HEAL_LOCATION_H
 #define GUARD_HEAL_LOCATION_H
 
-#include "global.h"
-
 struct HealLocation
 {
     s8 mapGroup;
     s8 mapNum;
-    s16 x;
-    s16 y;
+    u16 x;
+    u16 y;
 };
 
-const struct HealLocation *GetHealLocation(u32 loc);
-void SetWhiteoutRespawnWarpAndHealerNpc(struct WarpData * warp);
+u32 GetHealLocationIndexByMap(u16 mapGroup, u16 mapNum);
+const struct HealLocation *GetHealLocationByMap(u16 mapGroup, u16 mapNum);
+const struct HealLocation *GetHealLocation(u32 index);
 
 #endif // GUARD_HEAL_LOCATION_H

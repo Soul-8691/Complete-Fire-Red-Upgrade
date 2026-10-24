@@ -3,4 +3,4 @@
 
 void CB2_InitBerryFixProgram(void);
 
-#endif //GUARD_BERRY_FIX_PROGRAM_H
+#endif // GUARD_BERRY_FIX_PROGRAM_H

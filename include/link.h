@@ -1,8 +1,6 @@
 #ifndef GUARD_LINK_H
 #define GUARD_LINK_H
 
-#include "global.h"
-
 #define MAX_LINK_PLAYERS 4
 #define MAX_RFU_PLAYERS 5
 #define CMD_LENGTH 8
@@ -85,27 +83,27 @@
 #define LINKCMD_PARTNER_CANCEL_TRADE    0xEECC
 #define LINKCMD_NONE                    0xEFFF
 
-#define LINKTYPE_TRADE               0x1111
-#define LINKTYPE_TRADE_CONNECTING    0x1122
-#define LINKTYPE_TRADE_SETUP         0x1133
-#define LINKTYPE_TRADE_DISCONNECTED  0x1144
-#define LINKTYPE_BATTLE              0x2211
-#define LINKTYPE_UNUSED_BATTLE       0x2222 // Unused, inferred from gap
-#define LINKTYPE_SINGLE_BATTLE       0x2233
-#define LINKTYPE_DOUBLE_BATTLE       0x2244
-#define LINKTYPE_MULTI_BATTLE        0x2255
-#define LINKTYPE_BATTLE_TOWER_50     0x2266
-#define LINKTYPE_BATTLE_TOWER_OPEN   0x2277
-#define LINKTYPE_BATTLE_TOWER        0x2288
-#define LINKTYPE_RECORD_MIX_BEFORE   0x3311
-#define LINKTYPE_RECORD_MIX_AFTER    0x3322
-#define LINKTYPE_BERRY_BLENDER_SETUP 0x4411
-#define LINKTYPE_BERRY_BLENDER       0x4422
-#define LINKTYPE_MYSTERY_EVENT       0x5501
-#define LINKTYPE_EREADER_FRLG        0x5502
-#define LINKTYPE_EREADER_EM          0x5503
-#define LINKTYPE_CONTEST_GMODE       0x6601
-#define LINKTYPE_CONTEST_EMODE       0x6602
+#define LINKTYPE_TRADE                 0x1111
+#define LINKTYPE_TRADE_CONNECTING      0x1122
+#define LINKTYPE_TRADE_SETUP           0x1133
+#define LINKTYPE_TRADE_DISCONNECTED    0x1144
+#define LINKTYPE_BATTLE                0x2211
+#define LINKTYPE_UNUSED_BATTLE         0x2222 // Unused, inferred from gap
+#define LINKTYPE_SINGLE_BATTLE         0x2233
+#define LINKTYPE_DOUBLE_BATTLE         0x2244
+#define LINKTYPE_MULTI_BATTLE          0x2255
+#define LINKTYPE_BATTLE_TOWER_50       0x2266
+#define LINKTYPE_BATTLE_TOWER_OPEN     0x2277
+#define LINKTYPE_BATTLE_TOWER          0x2288
+#define LINKTYPE_RECORD_MIX_BEFORE     0x3311
+#define LINKTYPE_RECORD_MIX_AFTER      0x3322
+#define LINKTYPE_BERRY_BLENDER_SETUP   0x4411
+#define LINKTYPE_BERRY_BLENDER         0x4422
+#define LINKTYPE_MYSTERY_EVENT         0x5501
+#define LINKTYPE_EREADER_FRLG          0x5502
+#define LINKTYPE_EREADER_EM            0x5503
+#define LINKTYPE_CONTEST_GMODE         0x6601
+#define LINKTYPE_CONTEST_EMODE         0x6602
 
 enum {
     BLOCK_REQ_SIZE_NONE, // Identical to 200
@@ -115,11 +113,23 @@ enum {
     BLOCK_REQ_SIZE_40,
 };
 
+struct LinkStatus
+{
+    u32 localId:2;
+    u32 playerCount:3;
+    u32 master:1;
+    u32 connEstablished:1;
+    u32 unused_7:1;
+    u32 receivedNothing:1;
+    u32 unused_9:7;
+    u32 errors:7;
+};
+
 #define MASTER_HANDSHAKE  0x8FFF
 #define SLAVE_HANDSHAKE   0xB9A0
 #define EREADER_HANDSHAKE 0xCCD0
 
-#define IsSendCmdComplete()    (gSendCmd[0] == 0)
+#define SIO_MULTI_CNT ((struct SioMultiCnt *)REG_ADDR_SIOCNT)
 
 enum
 {
@@ -139,6 +149,7 @@ enum
     EXCHANGE_PLAYER_NOT_READY,
     EXCHANGE_PARTNER_NOT_READY,
     EXCHANGE_WRONG_NUM_PLAYERS,
+    EXCHANGE_STAT_7
 };
 
 enum
@@ -166,24 +177,24 @@ struct LinkPlayer
     /* 0x12 */ u8 progressFlagsCopy;
     /* 0x13 */ u8 gender;
     /* 0x14 */ u32 linkType;
-    /* 0x18 */ u16 id; // battle bank in battles
+    /* 0x18 */ u16 id; // battler id in battles
     /* 0x1A */ u16 language;
 };
 
 struct LinkPlayerBlock
 {
-    u8 magic1[16];
+    char magic1[16];
     struct LinkPlayer linkPlayer;
-    u8 magic2[16];
+    char magic2[16];
 };
 
 // circular queues
 
 struct SendQueue
 {
-    u16 data[CMD_LENGTH][QUEUE_CAPACITY];
-    u8 pos;
-    u8 count;
+    /* 0x000 */ u16 data[CMD_LENGTH][QUEUE_CAPACITY];
+    /* 0x320 */ u8 pos;
+    /* 0x321 */ u8 count;
 };
 
 struct RecvQueue
@@ -195,29 +206,29 @@ struct RecvQueue
 
 struct Link
 {
-    u8 isMaster; // 0: slave, 8: master
-    u8 state;
-    u8 localId; // local multi-player ID
-    u8 playerCount;
-    u16 tempRecvBuffer[4];
-    bool8 receivedNothing;
-    s8 serialIntrCounter;
-    bool8 handshakeAsMaster;
-    u8 link_field_F;
+    /* 0x000 */ u8 isMaster; // 0: slave, 8: master
+    /* 0x001 */ u8 state;
+    /* 0x002 */ u8 localId; // local multi-player ID
+    /* 0x003 */ u8 playerCount;
+    /* 0x004 */ u16 handshakeBuffer[MAX_LINK_PLAYERS];
+    /* 0x00c */ bool8 receivedNothing;
+    /* 0x00d */ s8 serialIntrCounter;
+    /* 0x00e */ bool8 handshakeAsMaster;
+    /* 0x00f */ u8 link_field_F;
 
     // error conditions
-    bool8 hardwareError; // hardware reported an error
-    bool8 badChecksum; // checksum didn't match between devices
-    u8 queueFull; // send or recv queue out of space
-    u8 lag; // connection is lagging
+    /* 0x010 */ bool8 hardwareError; // hardware reported an error
+    /* 0x011 */ bool8 badChecksum; // checksum didn't match between devices
+    /* 0x012 */ u8 queueFull; // send or recv queue out of space
+    /* 0x013 */ u8 lag; // connection is lagging
 
-    u16 checksum;
+    /* 0x014 */ u16 checksum;
 
-    u8 sendCmdIndex;
-    u8 recvCmdIndex;
+    /* 0x016 */ u8 sendCmdIndex;
+    /* 0x017 */ u8 recvCmdIndex;
 
-    struct SendQueue sendQueue;
-    struct RecvQueue recvQueue;
+    /* 0x018 */ struct SendQueue sendQueue;
+    /* 0x33c */ struct RecvQueue recvQueue;
 };
 
 struct BlockRequest
@@ -226,92 +237,111 @@ struct BlockRequest
     u32 size;
 };
 
-extern const struct BlockRequest sBlockRequestLookupTable[5];
-
 extern struct Link gLink;
-extern u16 gRecvCmds[MAX_RFU_PLAYERS][CMD_LENGTH];
+extern u16 ALIGNED(4) gRecvCmds[MAX_RFU_PLAYERS][CMD_LENGTH];
 extern u8 gBlockSendBuffer[BLOCK_BUFFER_SIZE];
 extern u16 gLinkType;
 extern u32 gLinkStatus;
 extern u16 gBlockRecvBuffer[MAX_RFU_PLAYERS][BLOCK_BUFFER_SIZE / 2];
 extern u16 gSendCmd[CMD_LENGTH];
-extern u8 gShouldAdvanceLinkState;
 extern struct LinkPlayer gLinkPlayers[MAX_RFU_PLAYERS];
-extern u16 word_3002910[];
 extern bool8 gReceivedRemoteLinkPlayers;
+extern u32 gBerryBlenderKeySendAttempts;
 extern bool8 gLinkVSyncDisabled;
-extern u8 gWirelessCommType;
-extern struct LinkPlayer gLocalLinkPlayer;
+extern u32 gLinkStatus;
 
-extern u8 gShouldAdvanceLinkState;
-extern u16 gLinkPartnersHeldKeys[6];
 
-void Task_DestroySelf(u8);
+bool8 IsWirelessAdapterConnected(void);
+void Task_DestroySelf(u8 taskId);
 void OpenLink(void);
 void CloseLink(void);
-u16 LinkMain2(const u16 *);
+u16 LinkMain2(const u16 *heldKeys);
 void ClearLinkCallback(void);
 void ClearLinkCallback_2(void);
 u8 GetLinkPlayerCount(void);
 void OpenLinkTimed(void);
-u8 GetLinkPlayerDataExchangeStatusTimed(int lower, int higher);
+u8 GetLinkPlayerDataExchangeStatusTimed(int minPlayers, int maxPlayers);
 bool8 IsLinkPlayerDataExchangeComplete(void);
-u32 GetLinkPlayerTrainerId(u8);
+u32 GetLinkPlayerTrainerId(u8 who);
 void ResetLinkPlayers(void);
 u8 GetMultiplayerId(void);
 u8 BitmaskAllOtherLinkPlayers(void);
-bool8 SendBlock(u8, const void *, u16);
+bool8 SendBlock(u8 unused, const void *src, u16 size);
 u8 GetBlockReceivedStatus(void);
 void ResetBlockReceivedFlags(void);
-void ResetBlockReceivedFlag(u8);
-void SetLinkDebugValues(u32, u32);
-u8 GetSavedPlayerCount(void);
+void ResetBlockReceivedFlag(u8 who);
 u8 GetLinkPlayerCount_2(void);
 bool8 IsLinkMaster(void);
 void CB2_LinkError(void);
-u8 GetSioMultiSI(void);
+bool8 GetSioMultiSI(void);
 bool8 IsLinkConnectionEstablished(void);
-void SetSuppressLinkErrorMessage(bool8);
 bool8 HasLinkErrorOccurred(void);
 void ResetSerial(void);
-u32 LinkMain1(u8 *, u16 *, u16[MAX_RFU_PLAYERS][CMD_LENGTH]);
-void RfuVSync(void);
+u32 LinkMain1(u8 *shouldAdvanceLinkState, u16 *sendCmd, u16 (*recvCmds)[CMD_LENGTH]);
+void LinkVSync(void);
 void Timer3Intr(void);
 void SerialCB(void);
-u8 GetLinkPlayerCount(void);
 bool32 InUnionRoom(void);
-
+void LoadWirelessStatusIndicatorSpriteGfx(void);
+bool8 IsLinkTaskFinished(void);
+void CreateWirelessStatusIndicatorSprite(u8 x, u8 y);
 void SetLinkStandbyCallback(void);
 void SetWirelessCommType1(void);
-void SetCloseLinkCallback(void);
-void OpenLink(void);
-bool8 IsLinkMaster(void);
 void CheckShouldAdvanceLinkState(void);
-void SetCloseLinkCallbackAndType(u16 type);
-void CloseLink(void);
-bool8 IsLinkTaskFinished(void);
-bool32 IsLinkRecvQueueAtOverworldMax(void);
-void ResetSerial(void);
-void SetWirelessCommType1(void);
-void LoadWirelessStatusIndicatorSpriteGfx(void);
-void CreateWirelessStatusIndicatorSprite(u8, u8);
-void StartSendingKeysToLink(void);
-void ClearLinkCallback_2(void);
-void Rfu_SetLinkStandbyCallback(void);
-void ConvertLinkPlayerName(struct LinkPlayer * linkPlayer);
-bool8 IsWirelessAdapterConnected(void);
-bool8 SendBlockRequest(u8 blockRequestType);
-void LinkVSync(void);
+void SetCloseLinkCallback(void);
 bool8 HandleLinkConnection(void);
+void SetLinkDebugValues(u32 seed, u32 flags);
+void SetBerryBlenderLinkCallback(void);
+void SetSuppressLinkErrorMessage(bool8 flag);
+void ConvertLinkPlayerName(struct LinkPlayer *player);
+void ClearSavedLinkPlayers(void);
+void SetLinkErrorBuffer(u32 status, u8 lastSendQueueCount, u8 lastRecvQueueCount, bool8 disconnected);
 void LocalLinkPlayerToBlock(void);
 void LinkPlayerFromBlock(u32 who);
-void SetLinkErrorFromRfu(u32 status, u8 lastSendQueueCount, u8 lastRecvQueueCount, u8 isConnectionError);
-u8 GetLinkPlayerCountAsBitFlags(void);
+bool32 Link_AnyPartnersPlayingFRLG_JP(void);
 void ResetLinkPlayerCount(void);
-void SaveLinkPlayers(u8 numPlayers);
-u8 GetSavedLinkPlayerCountAsBitFlags(void);
-void CheckLinkPlayersMatchSaved(void);
+void SaveLinkPlayers(u8 playerCount);
+void SetWirelessCommType0(void);
+bool32 IsLinkRecvQueueAtOverworldMax(void);
+
+extern u16 gLinkPartnersHeldKeys[6];
+extern u32 gLinkDebugSeed;
+extern struct LinkPlayerBlock gLocalLinkPlayerBlock;
+extern bool8 gLinkErrorOccurred;
+extern u32 gLinkDebugFlags;
+extern bool8 gRemoteLinkPlayersNotReceived[MAX_LINK_PLAYERS];
+extern u8 gBlockReceivedStatus[MAX_LINK_PLAYERS];
+extern u16 gLinkHeldKeys;
+extern u32 gLinkStatus;
+extern bool8 gReadyToExitStandby[MAX_LINK_PLAYERS];
+extern bool8 gReadyToCloseLink[MAX_LINK_PLAYERS];
+extern u16 gReadyCloseLinkType;
+extern u8 gSuppressLinkErrorMessage;
+extern u8 gWirelessCommType;
+extern bool8 gSavedLinkPlayerCount;
+extern u8 gSavedMultiplayerId;
+extern struct LinkTestBGInfo gLinkTestBGInfo;
+extern void (*gLinkCallback)(void);
+extern u8 gShouldAdvanceLinkState;
+extern u16 gLinkTestBlockChecksums[MAX_LINK_PLAYERS];
+extern u8 gBlockRequestType;
+extern u8 gLastSendQueueCount;
+extern u8 gLastRecvQueueCount;
+extern u16 gLinkSavedIme;
+extern struct LinkPlayer gLocalLinkPlayer;
+
+bool32 Link_AnyPartnersPlayingRubyOrSapphire(void);
+u32 LinkDummy_Return2(void);
 void SetLocalLinkPlayerId(u8 playerId);
+u8 GetSavedPlayerCount(void);
+bool8 SendBlockRequest(u8 blockReqType);
+u8 GetLinkPlayerCountAsBitFlags(void);
+u8 GetSavedLinkPlayerCountAsBitFlags(void);
+void SetCloseLinkCallbackHandleJP(void);
+void CheckLinkPlayersMatchSaved(void);
+void StartSendingKeysToLink(void);
+bool8 DoesLinkPlayerCountMatchSaved(void);
+void SetCloseLinkCallbackAndType(u16 type);
 bool32 IsSendingKeysToLink(void);
 u32 GetLinkRecvQueueLength(void);
 

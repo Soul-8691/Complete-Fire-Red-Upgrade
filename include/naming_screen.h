@@ -1,13 +1,15 @@
 #ifndef GUARD_NAMING_SCREEN_H
 #define GUARD_NAMING_SCREEN_H
 
-#include "global.h"
+#include "main.h"
 
-#define NAMING_SCREEN_PLAYER        0
-#define NAMING_SCREEN_BOX           1
-#define NAMING_SCREEN_CAUGHT_MON    2
-#define NAMING_SCREEN_NICKNAME      3
-#define NAMING_SCREEN_RIVAL         4
+enum {
+    NAMING_SCREEN_PLAYER,
+    NAMING_SCREEN_BOX,
+    NAMING_SCREEN_CAUGHT_MON,
+    NAMING_SCREEN_NICKNAME,
+    NAMING_SCREEN_WALDA,
+};
 
 void DoNamingScreen(u8 templateNum, u8 *destBuffer, u16 monSpecies, u16 monGender, u32 monPersonality, MainCallback returnCallback);
 

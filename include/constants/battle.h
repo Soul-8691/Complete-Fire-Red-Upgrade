@@ -23,21 +23,33 @@
  *   +---------------------------+
  */
 
-#define MAX_BATTLERS_COUNT  4
+enum BattlerPosition
+{
+    B_POSITION_PLAYER_LEFT,
+    B_POSITION_OPPONENT_LEFT,
+    B_POSITION_PLAYER_RIGHT,
+    B_POSITION_OPPONENT_RIGHT,
+    MAX_POSITION_COUNT,
+};
 
-#define B_POSITION_PLAYER_LEFT        0
-#define B_POSITION_OPPONENT_LEFT      1
-#define B_POSITION_PLAYER_RIGHT       2
-#define B_POSITION_OPPONENT_RIGHT     3
+enum BattlerId
+{
+    B_BATTLER_0,
+    B_BATTLER_1,
+    B_BATTLER_2,
+    B_BATTLER_3,
+    MAX_BATTLERS_COUNT,
+};
 
 // These macros can be used with either battler ID or positions to get the partner or the opposite mon
-#define BATTLE_OPPOSITE(id) ((id) ^ 1)
-#define BATTLE_PARTNER(id) ((id) ^ 2)
+#define BATTLE_OPPOSITE(id) ((id) ^ BIT_SIDE)
+#define BATTLE_PARTNER(id) ((id) ^ BIT_FLANK)
 
 #define B_SIDE_PLAYER     0
 #define B_SIDE_OPPONENT   1
+#define NUM_BATTLE_SIDES  2
 
-#define B_FLANK_LEFT 0
+#define B_FLANK_LEFT  0
 #define B_FLANK_RIGHT 1
 
 #define BIT_SIDE        1
@@ -53,24 +65,36 @@
 #define BATTLE_TYPE_MULTI              (1 << 6)
 #define BATTLE_TYPE_SAFARI             (1 << 7)
 #define BATTLE_TYPE_BATTLE_TOWER       (1 << 8)
-#define BATTLE_TYPE_OLD_MAN_TUTORIAL   (1 << 9) // Used in pokeemerald as BATTLE_TYPE_WALLY_TUTORIAL.
+#define BATTLE_TYPE_WALLY_TUTORIAL     (1 << 9) // Used in pokefirered as BATTLE_TYPE_OLD_MAN_TUTORIAL.
 #define BATTLE_TYPE_ROAMER             (1 << 10)
 #define BATTLE_TYPE_EREADER_TRAINER    (1 << 11)
 #define BATTLE_TYPE_KYOGRE_GROUDON     (1 << 12)
 #define BATTLE_TYPE_LEGENDARY          (1 << 13)
-#define BATTLE_TYPE_GHOST_UNVEILED     (1 << 13) // Re-use of BATTLE_TYPE_LEGENDARY, when combined with BATTLE_TYPE_GHOST
 #define BATTLE_TYPE_REGI               (1 << 14)
-#define BATTLE_TYPE_GHOST              (1 << 15) // Used in pokeemerald as BATTLE_TYPE_TWO_OPPONENTS.
-#define BATTLE_TYPE_POKEDUDE           (1 << 16) // Used in pokeemerald as BATTLE_TYPE_DOME.
-#define BATTLE_TYPE_WILD_SCRIPTED      (1 << 17) // Used in pokeemerald as BATTLE_TYPE_PALACE.
-#define BATTLE_TYPE_LEGENDARY_FRLG     (1 << 18) // Used in pokeemerald as BATTLE_TYPE_ARENA.
-#define BATTLE_TYPE_TRAINER_TOWER      (1 << 19) // Used in pokeemerald as BATTLE_TYPE_FACTORY.
-
-#define IS_BATTLE_TYPE_GHOST_WITHOUT_SCOPE(flags) ((flags) & BATTLE_TYPE_GHOST && !((flags) & BATTLE_TYPE_GHOST_UNVEILED))
-#define IS_BATTLE_TYPE_GHOST_WITH_SCOPE(flags) ((flags) & BATTLE_TYPE_GHOST && (flags) & BATTLE_TYPE_GHOST_UNVEILED)
-
-#define RIVAL_BATTLE_HEAL_AFTER  1
-#define RIVAL_BATTLE_TUTORIAL    3
+#define BATTLE_TYPE_TWO_OPPONENTS      (1 << 15) // Used in pokefirered as BATTLE_TYPE_GHOST.
+#define BATTLE_TYPE_DOME               (1 << 16) // Used in pokefirered as BATTLE_TYPE_POKEDUDE.
+#define BATTLE_TYPE_PALACE             (1 << 17) // Used in pokefirered as BATTLE_TYPE_WILD_SCRIPTED.
+#define BATTLE_TYPE_ARENA              (1 << 18) // Used in pokefirered as BATTLE_TYPE_LEGENDARY_FRLG.
+#define BATTLE_TYPE_FACTORY            (1 << 19) // Used in pokefirered as BATTLE_TYPE_TRAINER_TOWER.
+#define BATTLE_TYPE_PIKE               (1 << 20)
+#define BATTLE_TYPE_PYRAMID            (1 << 21)
+#define BATTLE_TYPE_INGAME_PARTNER     (1 << 22)
+#define BATTLE_TYPE_TOWER_LINK_MULTI   (1 << 23)
+#define BATTLE_TYPE_RECORDED           (1 << 24)
+#define BATTLE_TYPE_RECORDED_LINK      (1 << 25)
+#define BATTLE_TYPE_TRAINER_HILL       (1 << 26)
+#define BATTLE_TYPE_SECRET_BASE        (1 << 27)
+#define BATTLE_TYPE_GROUDON            (1 << 28)
+#define BATTLE_TYPE_KYOGRE             (1 << 29)
+#define BATTLE_TYPE_RAYQUAZA           (1 << 30)
+#define BATTLE_TYPE_RECORDED_IS_MASTER (1 << 31)
+#define BATTLE_TYPE_FRONTIER                (BATTLE_TYPE_BATTLE_TOWER | BATTLE_TYPE_DOME | BATTLE_TYPE_PALACE | BATTLE_TYPE_ARENA | BATTLE_TYPE_FACTORY | BATTLE_TYPE_PIKE | BATTLE_TYPE_PYRAMID)
+#define BATTLE_TYPE_FRONTIER_NO_PYRAMID     (BATTLE_TYPE_BATTLE_TOWER | BATTLE_TYPE_DOME | BATTLE_TYPE_PALACE | BATTLE_TYPE_ARENA | BATTLE_TYPE_FACTORY | BATTLE_TYPE_PIKE)
+#define BATTLE_TYPE_RECORDED_INVALID        ((BATTLE_TYPE_LINK | BATTLE_TYPE_SAFARI | BATTLE_TYPE_FIRST_BATTLE                  \
+                                             | BATTLE_TYPE_WALLY_TUTORIAL | BATTLE_TYPE_ROAMER | BATTLE_TYPE_EREADER_TRAINER    \
+                                             | BATTLE_TYPE_KYOGRE_GROUDON | BATTLE_TYPE_LEGENDARY | BATTLE_TYPE_REGI            \
+                                             | BATTLE_TYPE_RECORDED | BATTLE_TYPE_TRAINER_HILL | BATTLE_TYPE_SECRET_BASE        \
+                                             | BATTLE_TYPE_GROUDON | BATTLE_TYPE_KYOGRE | BATTLE_TYPE_RAYQUAZA))
 
 // Battle Outcome defines
 #define B_OUTCOME_WON                  1
@@ -85,8 +109,8 @@
 #define B_OUTCOME_MON_TELEPORTED       10
 #define B_OUTCOME_LINK_BATTLE_RAN      (1 << 7) // 128
 
-// Non-volatile status conditions
-// These persist remain outside of battle and after switching out
+// Non-volatile status conditions select from gBattleMons[n].status1, which is a u32.
+// These persist outside of battle and after switching out.
 #define STATUS1_NONE             0
 #define STATUS1_SLEEP            (1 << 0 | 1 << 1 | 1 << 2) // First 3 bits (Number of turns to sleep)
 #define STATUS1_SLEEP_TURN(num)  ((num) << 0) // Just for readability (or if rearranging statuses)
@@ -100,8 +124,8 @@
 #define STATUS1_PSN_ANY          (STATUS1_POISON | STATUS1_TOXIC_POISON)
 #define STATUS1_ANY              (STATUS1_SLEEP | STATUS1_POISON | STATUS1_BURN | STATUS1_FREEZE | STATUS1_PARALYSIS | STATUS1_TOXIC_POISON)
 
-// Volatile status ailments
-// These are removed after exiting the battle or switching out
+// Volatile status conditions select from gBattleMons[n].status2, which is a u32.
+// They are removed after exiting the battle or switching out.
 #define STATUS2_CONFUSION             (1 << 0 | 1 << 1 | 1 << 2)
 #define STATUS2_CONFUSION_TURN(num)   ((num) << 0)
 #define STATUS2_FLINCHED              (1 << 3)
@@ -130,7 +154,7 @@
 #define STATUS2_DEFENSE_CURL          (1 << 30)
 #define STATUS2_TORMENT               (1 << 31)
 
-// Seems like per-battler statuses. Not quite sure how to categorize these
+// These select from gStatuses3[n], which is a u32.
 #define STATUS3_LEECHSEED_BATTLER       (1 << 0 | 1 << 1) // The battler to receive HP from Leech Seed
 #define STATUS3_LEECHSEED               (1 << 2)
 #define STATUS3_ALWAYS_HITS             (1 << 3 | 1 << 4)
@@ -155,7 +179,7 @@
 
 // Not really sure what a "hitmarker" is.
 #define HITMARKER_WAKE_UP_CLEAR         (1 << 4) // Cleared when waking up. Never set or checked.
-#define HITMARKER_SKIP_DMG_TRACK        (1 << 5)
+#define HITMARKER_IGNORE_BIDE           (1 << 5)
 #define HITMARKER_DESTINYBOND           (1 << 6)
 #define HITMARKER_NO_ANIMATIONS         (1 << 7)
 #define HITMARKER_IGNORE_SUBSTITUTE     (1 << 8)
@@ -164,24 +188,25 @@
 #define HITMARKER_NO_PPDEDUCT           (1 << 11)
 #define HITMARKER_SWAP_ATTACKER_TARGET  (1 << 12)
 #define HITMARKER_STATUS_ABILITY_EFFECT (1 << 13)
-#define HITMARKER_SYNCHRONISE_EFFECT    (1 << 14)
+#define HITMARKER_SYNCHRONIZE_EFFECT    (1 << 14)
 #define HITMARKER_RUN                   (1 << 15)
 #define HITMARKER_IGNORE_ON_AIR         (1 << 16)
 #define HITMARKER_IGNORE_UNDERGROUND    (1 << 17)
 #define HITMARKER_IGNORE_UNDERWATER     (1 << 18)
 #define HITMARKER_UNABLE_TO_USE_MOVE    (1 << 19)
-#define HITMARKER_PASSIVE_DAMAGE        (1 << 20)
+#define HITMARKER_PASSIVE_HP_UPDATE     (1 << 20)
 #define HITMARKER_DISOBEDIENT_MOVE      (1 << 21)
 #define HITMARKER_PLAYER_FAINTED        (1 << 22)
 #define HITMARKER_ALLOW_NO_PP           (1 << 23)
 #define HITMARKER_GRUDGE                (1 << 24)
-#define HITMARKER_OBEYS                 (1 << 25)
+#define HITMARKER_OBEYS                 (1 << 25) // Set after obedience check has been performed
 #define HITMARKER_NEVER_SET             (1 << 26) // Cleared as part of a large group. Never set or checked
 #define HITMARKER_CHARGING              (1 << 27)
 #define HITMARKER_FAINTED(battler)      (gBitTable[battler] << 28)
 #define HITMARKER_FAINTED2(battler)     ((1 << 28) << battler)
 
-// Per-side statuses that affect an entire party
+// Per-side statuses that affect an entire party.
+// These select from gSideStatuses[n], which is a u16.
 #define SIDE_STATUS_REFLECT          (1 << 0)
 #define SIDE_STATUS_LIGHTSCREEN      (1 << 1)
 #define SIDE_STATUS_X4               (1 << 2)
@@ -202,7 +227,8 @@
 #define MOVE_RESULT_FOE_HUNG_ON        (1 << 7)
 #define MOVE_RESULT_NO_EFFECT          (MOVE_RESULT_MISSED | MOVE_RESULT_DOESNT_AFFECT_FOE | MOVE_RESULT_FAILED)
 
-// Battle Weather flags
+// Battle weather flags.
+// These select from gBattleWeather, which is a u16.
 #define B_WEATHER_RAIN_TEMPORARY      (1 << 0)
 #define B_WEATHER_RAIN_DOWNPOUR       (1 << 1)  // unused
 #define B_WEATHER_RAIN_PERMANENT      (1 << 2)
@@ -283,27 +309,17 @@
 #define MOVE_EFFECT_AFFECTS_USER        (1 << 6) // 64
 #define MOVE_EFFECT_CERTAIN             (1 << 7) // 128
 
-// Battle terrain defines for gBattleTerrain.
-#define BATTLE_TERRAIN_GRASS        0
-#define BATTLE_TERRAIN_LONG_GRASS   1
-#define BATTLE_TERRAIN_SAND         2
-#define BATTLE_TERRAIN_UNDERWATER   3
-#define BATTLE_TERRAIN_WATER        4
-#define BATTLE_TERRAIN_POND         5
-#define BATTLE_TERRAIN_MOUNTAIN     6
-#define BATTLE_TERRAIN_CAVE         7
-#define BATTLE_TERRAIN_BUILDING     8
-#define BATTLE_TERRAIN_PLAIN        9
-#define BATTLE_TERRAIN_LINK        10
-#define BATTLE_TERRAIN_GYM         11
-#define BATTLE_TERRAIN_LEADER      12
-#define BATTLE_TERRAIN_INDOOR_2    13
-#define BATTLE_TERRAIN_INDOOR_1    14
-#define BATTLE_TERRAIN_LORELEI     15
-#define BATTLE_TERRAIN_BRUNO       16
-#define BATTLE_TERRAIN_AGATHA      17
-#define BATTLE_TERRAIN_LANCE       18
-#define BATTLE_TERRAIN_CHAMPION    19
+// Battle environment defines for gBattleEnvironment.
+#define BATTLE_ENVIRONMENT_GRASS        0
+#define BATTLE_ENVIRONMENT_LONG_GRASS   1
+#define BATTLE_ENVIRONMENT_SAND         2
+#define BATTLE_ENVIRONMENT_UNDERWATER   3
+#define BATTLE_ENVIRONMENT_WATER        4
+#define BATTLE_ENVIRONMENT_POND         5
+#define BATTLE_ENVIRONMENT_MOUNTAIN     6
+#define BATTLE_ENVIRONMENT_CAVE         7
+#define BATTLE_ENVIRONMENT_BUILDING     8
+#define BATTLE_ENVIRONMENT_PLAIN        9
 
 #define B_WAIT_TIME_LONG  64
 #define B_WAIT_TIME_MED   48
@@ -324,7 +340,10 @@
 #define BATTLE_RUN_FORBIDDEN      1
 #define BATTLE_RUN_FAILURE        2
 
-// Window Ids for sTextOnWindowsInfo_Normal
+#define B_WIN_TYPE_NORMAL 0
+#define B_WIN_TYPE_ARENA  1
+
+// Window Ids for sStandardBattleWindowTemplates / sBattleArenaWindowTemplates
 #define B_WIN_MSG                 0
 #define B_WIN_ACTION_PROMPT       1 // "What will {x} do?"
 #define B_WIN_ACTION_MENU         2 // "Fight/Pokémon/Bag/Run" menu
@@ -333,13 +352,13 @@
 #define B_WIN_MOVE_NAME_3         5 // Bottom left
 #define B_WIN_MOVE_NAME_4         6 // Bottom right
 #define B_WIN_PP                  7
-#define B_WIN_MOVE_TYPE           8
+#define B_WIN_DUMMY               8
 #define B_WIN_PP_REMAINING        9
-#define B_WIN_DUMMY              10
+#define B_WIN_MOVE_TYPE          10
 #define B_WIN_SWITCH_PROMPT      11 // "Switch which?"
-#define B_WIN_LEVEL_UP_BOX       12
-#define B_WIN_LEVEL_UP_BANNER    13
-#define B_WIN_YESNO              14
+#define B_WIN_YESNO              12
+#define B_WIN_LEVEL_UP_BOX       13
+#define B_WIN_LEVEL_UP_BANNER    14
 #define B_WIN_VS_PLAYER          15
 #define B_WIN_VS_OPPONENT        16
 #define B_WIN_VS_MULTI_PLAYER_1  17
@@ -349,10 +368,19 @@
 #define B_WIN_VS_OUTCOME_DRAW    21
 #define B_WIN_VS_OUTCOME_LEFT    22
 #define B_WIN_VS_OUTCOME_RIGHT   23
-#define B_WIN_OAK_OLD_MAN        24
 
-#define B_TEXT_FLAG_NPC_CONTEXT_FONT    (1 << 6)
-#define B_TEXT_FLAG_WINDOW_CLEAR        (1 << 7)
+// The following are duplicate id values for windows that Battle Arena uses differently.
+#define ARENA_WIN_PLAYER_NAME      15
+#define ARENA_WIN_VS               16
+#define ARENA_WIN_OPPONENT_NAME    17
+#define ARENA_WIN_MIND             18
+#define ARENA_WIN_SKILL            19
+#define ARENA_WIN_BODY             20
+#define ARENA_WIN_JUDGMENT_TITLE   21
+#define ARENA_WIN_JUDGMENT_TEXT    22
+
+// Flag for BattlePutTextOnWindow. Never set
+#define B_WIN_COPYTOVRAM (1 << 7)
 
 // Indicator for the party summary bar to display an empty slot.
 #define HP_EMPTY_SLOT 0xFFFF

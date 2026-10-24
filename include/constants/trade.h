@@ -1,24 +1,14 @@
 #ifndef GUARD_CONSTANTS_TRADE_H
 #define GUARD_CONSTANTS_TRADE_H
 
-// TODO: document trade.c and trade_scene.c with corresponding macros
-// and examine if these are correct
-
 #define TRADE_PLAYER  0
 #define TRADE_PARTNER 1
 
-#define LINK_TRADE_TIMEOUT 300
-
 // In-game Trade IDs
-#define INGAME_TRADE_MR_MIME   0
-#define INGAME_TRADE_JYNX      1
-#define INGAME_TRADE_NIDORAN   2  // M or F depending on version
-#define INGAME_TRADE_FARFETCHD 3
-#define INGAME_TRADE_NIDORINOA 4  // Nidorino or Nidorina depending on version
-#define INGAME_TRADE_LICKITUNG 5
-#define INGAME_TRADE_ELECTRODE 6
-#define INGAME_TRADE_TANGELA   7
-#define INGAME_TRADE_SEEL      8
+#define INGAME_TRADE_SEEDOT 0
+#define INGAME_TRADE_PLUSLE 1
+#define INGAME_TRADE_HORSEA 2
+#define INGAME_TRADE_MEOWTH 3
 
 // Return values for CanTradeSelectedMon and CanSpinTradeMon
 #define CAN_TRADE_MON              0
@@ -55,4 +45,5 @@
 #define CANT_REGISTER_MON  1
 #define CANT_REGISTER_EGG  2
 
-#endif // GUARD_CONSTANTS_TRADE_H
+
+#endif //GUARD_CONSTANTS_TRADE_H

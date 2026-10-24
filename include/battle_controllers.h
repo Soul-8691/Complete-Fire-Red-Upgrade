@@ -1,11 +1,7 @@
 #ifndef GUARD_BATTLE_CONTROLLERS_H
 #define GUARD_BATTLE_CONTROLLERS_H
 
-#include "global.h"
-#include "battle.h"
-
-enum
-{
+enum {
     REQUEST_ALL_BATTLE,
     REQUEST_SPECIES_BATTLE,
     REQUEST_HELDITEM_BATTLE,
@@ -68,11 +64,65 @@ enum
     REQUEST_TOUGH_RIBBON_BATTLE,
 };
 
+// Accessors for gBattleControllerExecFlags.
+//
+// These are provided for documentation purposes, to make the battle
+// controller internals and the link communication internals more
+// legible. Several of these have functions that you should call
+// (e.g. MarkBattlerForControllerExec) instead of using these macros
+// directly.
+
+#define MARK_BATTLE_CONTROLLER_ACTIVE_ON_LOCAL(battler) \
+   gBattleControllerExecFlags |= gBitTable[battler]
+
+#define MARK_BATTLE_CONTROLLER_IDLE_ON_LOCAL(battler) \
+   gBattleControllerExecFlags &= ~gBitTable(battler)
+
+#define IS_BATTLE_CONTROLLER_ACTIVE_ON_LOCAL(battler) \
+   (gBattleControllerExecFlags & gBitTable[battler])
+
+#define MARK_BATTLE_CONTROLLER_MESSAGE_OUTBOUND_OVER_LINK(battler) \
+   gBattleControllerExecFlags |= gBitTable[battler] << (32 - MAX_BATTLERS_COUNT)
+
+#define MARK_BATTLE_CONTROLLER_MESSAGE_SYNCHRONIZED_OVER_LINK(battler) \
+   gBattleControllerExecFlags &= ~((1 << 28) << (battler))
+
+#define MARK_BATTLE_CONTROLLER_ACTIVE_FOR_PLAYER(battler, playerId) \
+   gBattleControllerExecFlags |= gBitTable[battler] << ((playerId) << 2)
+
+#define MARK_BATTLE_CONTROLLER_IDLE_FOR_PLAYER(battler, playerId) \
+   gBattleControllerExecFlags &= ~(gBitTable[battler] << ((playerId) * 4))
+
+#define IS_BATTLE_CONTROLLER_ACTIVE_FOR_PLAYER(battler, playerId) \
+   (gBattleControllerExecFlags & (gBitTable[battler] << ((playerId) * 4)))
+
+// This actually checks if a specific controller is active on any player or if
+// *any* controller is pending sync over link communications, but the macro name
+// can only be so specific before it just gets ridiculous.
+#define IS_BATTLE_CONTROLLER_ACTIVE_OR_PENDING_SYNC_ANYWHERE(battler) \
+   (gBattleControllerExecFlags & ( \
+      (gBitTable[battler])       \
+    | (0xF << 28)                  \
+    | (gBitTable[battler] << 4)  \
+    | (gBitTable[battler] << 8)  \
+    | (gBitTable[battler] << 12) \
+   ))
+
 // Special arguments for Battle Controller functions.
 
-enum { // Values given to the emit functions to choose gBattleBufferA or gBattleBufferB
-    BUFFER_A,
-    BUFFER_B
+enum {
+   // For commands sent from the core battle engine to a controller.
+   B_COMM_TO_CONTROLLER, // gBattleBufferA
+
+   // For replies sent from a controller to the core battle engine.
+   B_COMM_TO_ENGINE, // gBattleBufferB
+
+   // During local play, a controller must directly mark itself as
+   // inactive when it's done processing, whether or not it sends
+   // a reply. During multiplayer, it must NOT directly mark itself
+   // as inactive, but instead send one of these, with the player's
+   // multiplayer ID as data.
+   B_COMM_CONTROLLER_IS_DONE
 };
 
 enum {
@@ -88,7 +138,6 @@ enum {
     BALL_3_SHAKES_FAIL,
     BALL_3_SHAKES_SUCCESS,
     BALL_TRAINER_BLOCK,
-    BALL_GHOST_DODGE,
 };
 
 enum {
@@ -96,8 +145,6 @@ enum {
     LINK_STANDBY_STOP_BOUNCE_ONLY,
     LINK_STANDBY_MSG_ONLY,
 };
-
-#define RET_VALUE_LEVELLED_UP   11
 
 #define INSTANT_HP_BAR_DROP     0x7FFF
 
@@ -118,7 +165,7 @@ struct HpAndStatus
     u32 status;
 };
 
-struct MovePpInfo
+struct MovePPInfo
 {
     u16 moves[MAX_MON_MOVES];
     u8 pp[MAX_MON_MOVES];
@@ -128,11 +175,10 @@ struct MovePpInfo
 struct ChooseMoveStruct
 {
     u16 moves[MAX_MON_MOVES];
-    u8 currentPp[MAX_MON_MOVES];
-    u8 maxPp[MAX_MON_MOVES];
+    u8 currentPP[MAX_MON_MOVES];
+    u8 maxPP[MAX_MON_MOVES];
     u16 species;
-    u8 monType1;
-    u8 monType2;
+    u8 monTypes[2];
 };
 
 enum
@@ -156,7 +202,7 @@ enum
     CONTROLLER_PRINTSTRING,
     CONTROLLER_PRINTSTRINGPLAYERONLY,
     CONTROLLER_CHOOSEACTION,
-    CONTROLLER_UNKNOWNYESNOBOX,
+    CONTROLLER_YESNOBOX,
     CONTROLLER_CHOOSEMOVE,
     CONTROLLER_OPENBAG,
     CONTROLLER_CHOOSEPOKEMON,
@@ -181,7 +227,7 @@ enum
     CONTROLLER_HITANIMATION,
     CONTROLLER_CANTSWITCH,
     CONTROLLER_PLAYSE,
-    CONTROLLER_PLAYFANFARE,
+    CONTROLLER_PLAYFANFAREORBGM,
     CONTROLLER_FAINTINGCRY,
     CONTROLLER_INTROSLIDE,
     CONTROLLER_INTROTRAINERBALLTHROW,
@@ -202,7 +248,7 @@ extern struct UnusedControllerStruct gUnusedControllerStruct;
 
 // general functions
 void HandleLinkBattleSetup(void);
-void SetUpBattleVars(void);
+void SetUpBattleVarsAndBirchZigzagoon(void);
 void InitBattleControllers(void);
 void TryReceiveLinkBattleData(void);
 void PrepareBufferDataTransferLink(u8 bufferId, u16 size, u8 *data);
@@ -218,93 +264,74 @@ void BtlController_EmitTrainerSlide(u8 bufferId);
 void BtlController_EmitTrainerSlideBack(u8 bufferId);
 void BtlController_EmitFaintAnimation(u8 bufferId);
 void BtlController_EmitBallThrowAnim(u8 bufferId, u8 caseId);
-void BtlController_EmitMoveAnimation(u8 bufferId, u16 move, u8 turnOfMove, u16 movePower, s32 dmg, u8 friendship, struct DisableStruct *disableStructPtr);
+void BtlController_EmitMoveAnimation(u8 bufferId, u16 move, u8 turnOfMove, u16 movePower, s32 dmg, u8 friendship, struct DisableStruct *disableStructPtr, u8 multihit);
 void BtlController_EmitPrintString(u8 bufferId, u16 stringId);
 void BtlController_EmitPrintSelectionString(u8 bufferId, u16 stringId);
 void BtlController_EmitChooseAction(u8 bufferId, u8 action, u16 itemId);
-void BtlController_EmitChooseMove(u8 bufferId, bool8 isDoubleBattle, bool8 NoPpNumber, struct ChooseMoveStruct *movePpData);
-void BtlController_EmitChooseItem(u8 bufferId, u8 *arg1);
-void BtlController_EmitChoosePokemon(u8 bufferId, u8 caseId, u8 arg2, u8 abilityId, u8 *arg4);
+void BtlController_EmitYesNoBox(u8 bufferId);
+void BtlController_EmitChooseMove(u8 bufferId, bool8 isDoubleBattle, bool8 noPPNumber, struct ChooseMoveStruct *movePPData);
+void BtlController_EmitChooseItem(u8 bufferId, u8 *battlePartyOrder);
+void BtlController_EmitChoosePokemon(u8 bufferId, u8 caseId, u8 slotId, u8 abilityId, u8 *data);
 void BtlController_EmitHealthBarUpdate(u8 bufferId, u16 hpValue);
 void BtlController_EmitExpUpdate(u8 bufferId, u8 partyId, u16 expPoints);
 void BtlController_EmitStatusIconUpdate(u8 bufferId, u32 status1, u32 status2);
 void BtlController_EmitStatusAnimation(u8 bufferId, bool8 status2, u32 status);
 void BtlController_EmitDataTransfer(u8 bufferId, u16 size, void *data);
-void BtlController_EmitTwoReturnValues(u8 bufferId, u8 arg1, u16 arg2);
-void BtlController_EmitChosenMonReturnValue(u8 bufferId, u8 b, u8 *c);
-void BtlController_EmitOneReturnValue(u8 bufferId, u16 arg1);
-void BtlController_EmitOneReturnValue_Duplicate(u8 bufferId, u16 b);
+void BtlController_EmitTwoReturnValues(u8 bufferId, u8 ret8, u16 ret16);
+void BtlController_EmitChosenMonReturnValue(u8 bufferId, u8 partyId, u8 *battlePartyOrder);
+void BtlController_EmitOneReturnValue(u8 bufferId, u16 ret);
+void BtlController_EmitOneReturnValue_Duplicate(u8 bufferId, u16 ret);
 void BtlController_EmitHitAnimation(u8 bufferId);
 void BtlController_EmitCantSwitch(u8 bufferId);
 void BtlController_EmitPlaySE(u8 bufferId, u16 songId);
-void BtlController_EmitPlayFanfare(u8 bufferId, u16 songId);
+void BtlController_EmitPlayFanfareOrBGM(u8 bufferId, u16 songId, bool8 playBGM);
 void BtlController_EmitFaintingCry(u8 bufferId);
-void BtlController_EmitIntroSlide(u8 bufferId, u8 terrainId);
+void BtlController_EmitIntroSlide(u8 bufferId, u8 environmentId);
 void BtlController_EmitIntroTrainerBallThrow(u8 bufferId);
-void BtlController_EmitDrawPartyStatusSummary(u8 bufferId, struct HpAndStatus *hpAndStatus, u8 param);
+void BtlController_EmitDrawPartyStatusSummary(u8 bufferId, struct HpAndStatus *hpAndStatus, u8 flags);
 void BtlController_EmitHidePartyStatusSummary(u8 bufferId);
 void BtlController_EmitEndBounceEffect(u8 bufferId);
 void BtlController_EmitSpriteInvisibility(u8 bufferId, bool8 isInvisible);
 void BtlController_EmitBattleAnimation(u8 bufferId, u8 animationId, u16 argument);
-void BtlController_EmitLinkStandbyMsg(u8 bufferId, u8 mode);
+void BtlController_EmitLinkStandbyMsg(u8 bufferId, u8 mode, bool32 record);
 void BtlController_EmitResetActionMoveSelection(u8 bufferId, u8 caseId);
 void BtlController_EmitEndLinkBattle(u8 bufferId, u8 battleOutcome);
 
 // player controller
-void BattleControllerDummy(void);
 void SetControllerToPlayer(void);
+void BattleControllerDummy(void);
 void PlayerHandleGetRawMonData(void);
-void SpriteCB_FreePlayerSpriteLoadMonSprite(struct Sprite *sprite);
-void SetCB2ToReshowScreenAfterMenu(void);
-void SetCB2ToReshowScreenAfterMenu2(void);
-void Task_PlayerController_RestoreBgmAfterCry(u8 taskId);
-void ActionSelectionCreateCursorAt(u8 cursorPos, u8 unused);
-void ActionSelectionDestroyCursorAt(u8 cursorPos);
-void InitMoveSelectionsVarsAndStrings(void);
 void SetBattleEndCallbacks(void);
-void MoveSelectionCreateCursorAt(u8 cursorPos, u8 arg1);
-void MoveSelectionDestroyCursorAt(u8 cursorPos);
-void HandleInputChooseMove(void);
+void SpriteCB_FreePlayerSpriteLoadMonSprite(struct Sprite *sprite);
+void CB2_SetUpReshowBattleScreenAfterMenu(void);
+void CB2_SetUpReshowBattleScreenAfterMenu2(void);
+void Task_PlayerController_RestoreBgmAfterCry(u8 taskId);
+void ActionSelectionCreateCursorAt(u8 cursorPosition, u8 baseTileNum);
+void ActionSelectionDestroyCursorAt(u8 cursorPosition);
+void InitMoveSelectionsVarsAndStrings(void);
+
+// recorded player controller
+void SetControllerToRecordedPlayer(void);
 
 // opponent controller
 void SetControllerToOpponent(void);
-void OpponentBufferExecCompleted(void);
+
+// player partner controller
+void SetControllerToPlayerPartner(void);
 
 // safari controller
 void SetControllerToSafari(void);
 
-// pokedude controller
-void SetControllerToPokedude(void);
-void InitPokedudePartyAndOpponent(void);
+// wally controller
+void SetControllerToWally(void);
 
-// oak and old man controller
-void SetControllerToOakOrOldMan(void);
+// recorded opponent controller
+void SetControllerToRecordedOpponent(void);
 
-// These flags are set to signal that the indicated message
-// was already emitted
-
-// Inflicting damage is key
-#define FIRST_BATTLE_MSG_FLAG_INFLICT_DMG    0x1
-// Lowering stats is advantageous
-#define FIRST_BATTLE_MSG_FLAG_STAT_CHG       0x2
-// Keep an eye on your HP
-#define FIRST_BATTLE_MSG_FLAG_HP_RESTORE     0x4
-//
-#define FIRST_BATTLE_MSG_FLAG_PARTY_MENU     0x8
-
-bool8 BtlCtrl_OakOldMan_TestState2Flag(u8 mask);
-void BtlCtrl_OakOldMan_SetState2Flag(u8 mask);
-void PrintOakText_InflictingDamageIsKey(void);
-void PrintOakText_HowDisappointing(void);
-void PrintOakText_OakNoRunningFromATrainer(void);
-void OakOldManHandleInputChooseMove(void);
-void BtlCtrl_DrawVoiceoverMessageFrame(void);
-void BtlCtrl_RemoveVoiceoverMessageFrame(void);
-
-// link opponent controller
+// link opponent
 void SetControllerToLinkOpponent(void);
 
-// link partner controller
+// link partner
 void SetControllerToLinkPartner(void);
 
 #endif // GUARD_BATTLE_CONTROLLERS_H
