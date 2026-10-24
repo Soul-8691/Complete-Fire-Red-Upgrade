@@ -1,6 +1,6 @@
 # Credits to mZake
-Symbols = open('pokefirered.sym', 'r')
-Bpre_ld = open('BPRE.ld', 'w')
+Symbols = open('pokeemerald.sym', 'r')
+Bpee_ld = open('BPEE.ld', 'w')
 Rodata = False
 
 for Symbol in Symbols:
@@ -10,12 +10,12 @@ for Symbol in Symbols:
     if Name == '.rodata':
         Rodata = True
 
-    Bpre_ld.write(f'{Name} = 0x{Address}')
+    Bpee_ld.write(f'{Name} = 0x{Address}')
 
     if Rodata == False and Address[:2] != '02' and Address[:2] != '03' and Name[0] != 's' and Name[0] != 'g':
-        Bpre_ld.write('|1')
+        Bpee_ld.write('|1')
 
-    Bpre_ld.write(';\n')
+    Bpee_ld.write(';\n')
 
 Symbols.close()
-Bpre_ld.close()
+Bpee_ld.close()

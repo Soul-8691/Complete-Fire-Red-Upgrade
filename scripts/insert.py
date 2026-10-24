@@ -8,7 +8,7 @@ from datetime import datetime
 import _io
 
 OFFSET_TO_PUT = 0x1f00000
-SOURCE_ROM = "BPRE0.gba"
+SOURCE_ROM = "BPEE0.gba"
 ROM_NAME = "test.gba"
 
 if sys.platform.startswith('win'):
